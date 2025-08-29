@@ -58,6 +58,7 @@ ta_dim = {
     "ninja": 15,
     "plunder": 15,
     "starpilot": 15,
+    "flam": -1
 }
 
 procgen_names = [

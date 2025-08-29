@@ -1,5 +1,6 @@
 import config
-import data_loader
+# import data_loader
+import hdf5_data_loader as data_loader
 import doy
 import paths
 import torch
@@ -14,7 +15,12 @@ run, logger = config.wandb_init("lapo_stage1", config.get_wandb_cfg(cfg))
 
 idm, wm = utils.create_dynamics_models(cfg.model)
 
-train_data, test_data = data_loader.load(cfg.env_name)
+train_data, test_data = data_loader.load(
+    cfg.env_name,
+    hdf5_train_path=cfg.hdf5_train_path,
+    hdf5_test_path=cfg.hdf5_test_path,
+    obs_key=cfg.obs_key
+)
 train_iter = train_data.get_iter(cfg.stage1.bs)
 test_iter = test_data.get_iter(128)
 
@@ -75,8 +81,8 @@ def test_step():
 for step in loop(cfg.stage1.steps + 1, desc="[green bold](stage-1) Training IDM + FDM"):
     train_step()
 
-    if step % 500 == 0:
-        test_step()
+    # if step % 500 == 0:
+    #     test_step()
 
     if step > 0 and (step % 5_000 == 0 or step == cfg.stage1.steps):
         torch.save(

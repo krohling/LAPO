@@ -1,6 +1,7 @@
 env_name: bigfish
 exp_name: ~ # filled in by the launch.sh script (consistent across stages 1-3)
 stage_exp_name: ~ # updated in stages 1-3, used for wandb logging as a suffix
+obs_key: observations
 
 # configure model architecture
 model:

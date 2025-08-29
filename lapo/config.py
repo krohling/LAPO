@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Iterable
+from pathlib import Path
 
 import doy
 import env_utils
@@ -86,6 +87,9 @@ class Config:
     env_name: str
     exp_name: str
     stage_exp_name: str | None
+    hdf5_train_path: Path | None
+    hdf5_test_path: Path | None
+    obs_key: str | None
 
     model: ModelConfig
     stage1: Stage1Config
@@ -149,9 +153,12 @@ def print_cfg(cfg: Config, exclude_keys: Iterable[str] = ()):
 def get_wandb_cfg(cfg: Config) -> dict:
     """transform config to dict for wandb logging and add other metadata"""
     cfg_dict: dict = OmegaConf.to_container(cfg, resolve=True)  # type: ignore
-    cfg_dict["env_key"] = (
-        f"{env_utils.procgen_names.index(cfg.env_name)}-{cfg.env_name}"
-    )
+    if cfg.env_name in env_utils.procgen_names:
+        cfg_dict["env_key"] = (
+            f"{env_utils.procgen_names.index(cfg.env_name)}-{cfg.env_name}"
+        )
+    else:
+        cfg_dict["env_key"] = cfg.env_name
     return cfg_dict
 
 
