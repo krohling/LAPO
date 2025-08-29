@@ -1,0 +1,2 @@
+python stage1_idm.py env_name="flam" exp_name="tennis" hdf5_train_path="./expert_data/tennis/train.hdf5" hdf5_test_path="./expert_data/tennis/test.hdf5"
+python stage1_idm.py env_name="flam" exp_name="multigrid" hdf5_train_path="./expert_data/multigrid/train.hdf5" hdf5_test_path="./expert_data/multigrid/test.hdf5"
