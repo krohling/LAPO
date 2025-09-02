@@ -137,7 +137,13 @@ class Hdf5Dataset(torch.utils.data.Dataset):
         num_timestamps = 0
         for data_idx, (data_path, frame_skip) in enumerate(zip(data_paths, frame_skips)):
             with h5py.File(data_path, "r") as f:
-                num_episodes = int(f.attrs["num_videos"])  # type: ignore[index]
+                if "num_videos" in f.attrs:
+                    num_episodes = int(f.attrs["num_videos"])  # type: ignore[index]
+                else:
+                    num_episodes = len([
+                        e for e in list(f.keys()) 
+                        if "episode" in e and isinstance(f[e], h5py.Group)
+                    ])
             episode_indices = list(range(num_episodes))
             epi_idx_to_steps = self._get_episode_steps(str(data_path), episode_indices)
 

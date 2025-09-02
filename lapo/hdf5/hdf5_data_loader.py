@@ -63,7 +63,7 @@ class HDF5DataStager:
         while True:
             for batch in dataloader:
                 obs_tensor = torch.stack([i["image"] for i in batch], dim=0).contiguous().to(device)
-                print(f"obs_tensor shape: {obs_tensor.shape}  min(): {obs_tensor.min()}, max: {obs_tensor.max()}, dtype: {obs_tensor.dtype}")
+                # print(f"obs_tensor shape: {obs_tensor.shape}  min(): {obs_tensor.min()}, max: {obs_tensor.max()}, dtype: {obs_tensor.dtype}")
 
                 b_dict = TensorDict(
                     {
