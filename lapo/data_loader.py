@@ -6,7 +6,7 @@ import doy
 import numpy as np
 import paths
 import torch
-from config import ADD_TIME_HORIZON, DEVICE
+from config import get_add_time_horizon, DEVICE
 from tensordict import TensorDict, TensorDictBase
 from torch.utils.data import DataLoader
 
@@ -107,7 +107,7 @@ def _load(env_name: str, test: bool):
     return DataStager(
         files=paths.get_expert_data(env_name, test),
         chunk_len=chunk_len,
-        seq_len=2 + ADD_TIME_HORIZON,
+        seq_len=2 + get_add_time_horizon(),
     )
 
 

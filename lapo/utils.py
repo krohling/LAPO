@@ -29,8 +29,8 @@ def create_dynamics_models(
     model_cfg: config.ModelConfig, state_dicts: dict | None = None
 ) -> tuple[IDM, WorldModel]:
     obs_depth = 3
-    idm_in_depth = obs_depth * (2 + config.ADD_TIME_HORIZON)
-    wm_in_depth = obs_depth * (1 + config.ADD_TIME_HORIZON)
+    idm_in_depth = obs_depth * (2 + config.get_add_time_horizon())
+    wm_in_depth = obs_depth * (1 + config.get_add_time_horizon())
     wm_out_depth = obs_depth
 
     idm = IDM(

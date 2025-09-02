@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from typing import Iterable
-from pathlib import Path
 
 import doy
 import env_utils
@@ -10,13 +9,20 @@ from rich.syntax import Syntax
 import torch
 import wandb
 
-ADD_TIME_HORIZON = 1
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 """ 
 The actual config is in config.yaml, these dataclasses are just for validation and type hints.
 """
 
+add_time_horizon: int = 0
+
+def get_add_time_horizon() -> int:
+    return add_time_horizon
+
+def set_add_time_horizon(v: int) -> None:
+    global add_time_horizon
+    add_time_horizon = v
 
 @dataclass
 class VQConfig:
@@ -87,14 +93,19 @@ class Config:
     env_name: str
     exp_name: str
     stage_exp_name: str | None
-    hdf5_train_path: Path | None
-    hdf5_test_path: Path | None
-    obs_key: str | None
 
     model: ModelConfig
     stage1: Stage1Config
     stage2: Stage2Config
     stage3: Stage3Config
+
+    data_path: str
+    sub_traj_len: int = 2
+    image_size: int = 64
+    train_fname: str = "train.hdf5"
+    test_fname: str = "test.hdf5"
+    frame_skip: int = 4
+    iterate_frame_between_skip: bool | None = True
 
 
 def get(

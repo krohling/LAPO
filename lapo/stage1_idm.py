@@ -1,6 +1,6 @@
 import config
 # import data_loader
-import hdf5_data_loader as data_loader
+import hdf5.hdf5_data_loader as data_loader
 import doy
 import paths
 import torch
@@ -11,16 +11,15 @@ cfg = config.get()
 doy.print("[bold green]Running LAPO stage 1 (IDM/FDM training) with config:")
 config.print_cfg(cfg)
 
+cfg.sub_traj_len = max(cfg.sub_traj_len, 2)  # IDM needs at least 2 steps
+config.set_add_time_horizon(cfg.sub_traj_len-2)
+
 run, logger = config.wandb_init("lapo_stage1", config.get_wandb_cfg(cfg))
 
 idm, wm = utils.create_dynamics_models(cfg.model)
 
-train_data, test_data = data_loader.load(
-    cfg.env_name,
-    hdf5_train_path=cfg.hdf5_train_path,
-    hdf5_test_path=cfg.hdf5_test_path,
-    obs_key=cfg.obs_key
-)
+
+train_data, test_data = data_loader.load(**cfg)
 train_iter = train_data.get_iter(cfg.stage1.bs)
 test_iter = test_data.get_iter(128)
 
