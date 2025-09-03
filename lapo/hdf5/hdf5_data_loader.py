@@ -22,10 +22,14 @@ class HDF5DataStager:
         test_fname: str = "test.hdf5",
         frame_skip: Union[int, List[int]] = 4,
         iterate_frame_between_skip: bool | None = True,
+        num_workers: int = 0,
+        prefetch_factor: int = None,
         dtype=torch.float32,
         np_dtype=np.float32,
         **kwargs
     ) -> None:
+        self.num_workers = num_workers
+        self.prefetch_factor = prefetch_factor
         self.dataset = Hdf5Dataset(
             config=DatasetConfig(
                 dtype=dtype,
@@ -52,12 +56,15 @@ class HDF5DataStager:
         shuffle=True,
         drop_last=True,
     ) -> Generator[TensorDict, None, None]:
+        print(f"num_workers: {self.num_workers}, prefetch_factor: {self.prefetch_factor}")
         dataloader = DataLoader(
             self.dataset,
             batch_size=batch_size,
             shuffle=shuffle,
             drop_last=drop_last,
             collate_fn=lambda x: x,
+            num_workers=self.num_workers,
+            prefetch_factor=self.prefetch_factor
         )
 
         while True:

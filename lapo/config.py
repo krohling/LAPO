@@ -106,6 +106,8 @@ class Config:
     test_fname: str = "test.hdf5"
     frame_skip: int = 4
     iterate_frame_between_skip: bool | None = True
+    num_workers: int = 0
+    prefetch_factor: int | None = None
 
 
 def get(
