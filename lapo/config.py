@@ -9,13 +9,20 @@ from rich.syntax import Syntax
 import torch
 import wandb
 
-ADD_TIME_HORIZON = 1
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 """ 
 The actual config is in config.yaml, these dataclasses are just for validation and type hints.
 """
 
+add_time_horizon: int = 0
+
+def get_add_time_horizon() -> int:
+    return add_time_horizon
+
+def set_add_time_horizon(v: int) -> None:
+    global add_time_horizon
+    add_time_horizon = v
 
 @dataclass
 class VQConfig:
@@ -92,6 +99,16 @@ class Config:
     stage2: Stage2Config
     stage3: Stage3Config
 
+    data_path: str
+    sub_traj_len: int = 2
+    image_size: int = 64
+    train_fname: str = "train.hdf5"
+    test_fname: str = "test.hdf5"
+    frame_skip: int = 4
+    iterate_frame_between_skip: bool | None = True
+    num_workers: int = 0
+    prefetch_factor: int | None = None
+
 
 def get(
     base_cfg: DictConfig | None = None,
@@ -149,9 +166,12 @@ def print_cfg(cfg: Config, exclude_keys: Iterable[str] = ()):
 def get_wandb_cfg(cfg: Config) -> dict:
     """transform config to dict for wandb logging and add other metadata"""
     cfg_dict: dict = OmegaConf.to_container(cfg, resolve=True)  # type: ignore
-    cfg_dict["env_key"] = (
-        f"{env_utils.procgen_names.index(cfg.env_name)}-{cfg.env_name}"
-    )
+    if cfg.env_name in env_utils.procgen_names:
+        cfg_dict["env_key"] = (
+            f"{env_utils.procgen_names.index(cfg.env_name)}-{cfg.env_name}"
+        )
+    else:
+        cfg_dict["env_key"] = cfg.env_name
     return cfg_dict
 
 
