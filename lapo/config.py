@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from typing import Iterable
+from dataclasses import dataclass, field
+from typing import Iterable, Literal
 
 import doy
 import env_utils
@@ -8,6 +8,9 @@ from omegaconf import DictConfig, OmegaConf
 from rich.syntax import Syntax
 import torch
 import wandb
+
+from flam.configs.models.modules.encoder import EncoderConfig
+from flam.configs.models.modules.decoder import DecoderConfig
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -34,15 +37,38 @@ class VQConfig:
     commitment_cost: float
     decay: float
 
+@dataclass
+class WMEncDecConfig:
+    encoder_type: str = "impala"  # Literal["magvit2", "impala", "cosmos_continuous"]
+    decoder_type: str = "lapo"    # Literal["magvit2", "lapo", "cosmos_continuous"]
+    encoder_all: EncoderConfig = field(default_factory=EncoderConfig)
+    decoder_all: DecoderConfig = field(default_factory=DecoderConfig)
+
+@dataclass
+class IDMEncoderConfig:
+    encoder_type: str = "impala"    # Literal["default", "magvit2", "impala", "cosmos_continuous"]
+    encoder_all: EncoderConfig = field(default_factory=EncoderConfig)
+
 
 @dataclass
 class ModelConfig:
     wm_scale: int
-    idm_impala_scale: int
     policy_impala_scale: int
     vq: VQConfig
     la_dim: int
     ta_dim: int
+    idm_encoder: IDMEncoderConfig = field(default_factory=IDMEncoderConfig)
+    wm_encdec: WMEncDecConfig = field(default_factory=WMEncDecConfig)
+
+@dataclass
+class DataConfig:
+    path: str
+    train_fname: str = "train.hdf5"
+    test_fname: str = "test.hdf5"
+    frame_skip: int = 4
+    iterate_frame_between_skip: bool | None = True
+    num_workers: int = 0
+    prefetch_factor: int | None = None
 
 
 @dataclass
@@ -94,20 +120,15 @@ class Config:
     exp_name: str
     stage_exp_name: str | None
 
+    data: DataConfig
     model: ModelConfig
+
     stage1: Stage1Config
     stage2: Stage2Config
     stage3: Stage3Config
 
-    data_path: str
-    sub_traj_len: int = 2
     image_size: int = 64
-    train_fname: str = "train.hdf5"
-    test_fname: str = "test.hdf5"
-    frame_skip: int = 4
-    iterate_frame_between_skip: bool | None = True
-    num_workers: int = 0
-    prefetch_factor: int | None = None
+    sub_traj_len: int = 2
 
 
 def get(

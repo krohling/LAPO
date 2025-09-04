@@ -8,6 +8,11 @@ from funcy import partition
 from tensordict import TensorDict
 from torch.distributions import Categorical
 
+from config import IDMEncoderConfig, WMEncDecConfig
+
+from flam.models.modules.encoder import encoder_library
+from flam.models.modules.decoder import decoder_library
+
 ObsShapeType = tuple[int, int, int]  # (channels, height, width)
 
 
@@ -122,6 +127,32 @@ class WorldModel(nn.Module):
         la = batch["la_q"]  # TODO: also allow using la(noq)
         batch["wm_pred"] = self(wm_in_seq, la)
         return F.mse_loss(batch["wm_pred"], wm_targ)
+
+
+class EncDecWorldModel(nn.Module):
+    """EncDec-based world model"""
+
+    def __init__(self, action_dim, cfg: WMEncDecConfig, image_size: int = 64):
+        super().__init__()
+        encoder_type_cfg = cfg.encoder_all[cfg.encoder_type]
+        decoder_type_cfg = cfg.decoder_all[cfg.decoder_type]
+
+        self.encoder = encoder_library[cfg.encoder_type](image_size, encoder_type_cfg)
+        self.decoder = decoder_library[cfg.decoder_type](decoder_type_cfg)
+
+    def forward(self, state_seq, action):
+        """
+        state_seq.shape = (B, L, C, H, W)
+        action.shape = (B, L)
+        """
+
+        raise NotImplementedError("EncDecWorldModel forward not implemented yet")
+
+    def label(self, batch: TensorDict) -> torch.Tensor:
+        
+        raise NotImplementedError("EncDecWorldModel label not implemented yet")
+
+
 
 
 def layer_init(layer, std=None, bias_const=0.0):
@@ -353,17 +384,26 @@ class IDM(nn.Module):
         vq_config: config.VQConfig,
         obs_shape: ObsShapeType,
         action_dim: int,
-        impala_scale: int,
-        impala_channels: tuple[int, ...] = (16, 32, 32),
-        impala_features=256,
+        encoder_cfg: IDMEncoderConfig,
+        image_size: int = 64,
+        sub_traj_len: int = 2,
     ):
         super().__init__()
 
-        # initialize impala CNN
-        self.conv_stack, self.fc = get_impala(
-            obs_shape, impala_scale, impala_channels, impala_features
-        )
-        self.policy_head = nn.Linear(impala_features, action_dim)
+        self.encoder_cfg = encoder_cfg
+        encoder_type_cfg = encoder_cfg.encoder_all[encoder_cfg.encoder_type]
+
+        if encoder_cfg.encoder_type == "default":
+            # initialize impala CNN
+            self.conv_stack, self.fc = get_impala(
+                obs_shape, encoder_type_cfg.impala_scale, encoder_type_cfg.impala_channels, encoder_type_cfg.impala_features
+            )
+            self.policy_head = nn.Linear(encoder_type_cfg.impala_features, action_dim)
+        else:
+            self.encoder = encoder_library[encoder_cfg.encoder_type](image_size, encoder_type_cfg)
+
+            encoder_features = sub_traj_len * self.encoder.N * self.encoder.D
+            self.policy_head = nn.Linear(encoder_features, action_dim)
 
         # initialize quantizer
         self.vq = VQEmbeddingEMA(vq_config)
@@ -373,8 +413,16 @@ class IDM(nn.Module):
         x.shape = (B, T, C, H, W)
         the IDM predicts the action between the last and second to last frames (T dim).
         """
-        x = merge_TC_dims(x)
-        la = self.policy_head(F.relu(self.fc(self.conv_stack(x))))
+        if self.encoder_cfg.encoder_type == "default":
+            x = merge_TC_dims(x)
+            la = self.policy_head(F.relu(self.fc(self.conv_stack(x))))
+        else:
+            B, T = x.shape[:2]
+            x = x.reshape((B * T,) + x.shape[2:])       # -> (B*T, C, H, W)
+            x = self.encoder(x)                         # -> (B*T, H_feat, W_feat, D)
+            x = x.reshape((B, T*np.prod(x.shape[1:])))  # -> (B, T*H_feat*W_feat*D)
+            la = self.policy_head(F.relu(x))            # -> (B, action_dim)
+
         la_q, vq_loss, vq_perp, la_qinds = self.vq(la)
 
         action_dict = TensorDict(

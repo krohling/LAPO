@@ -16,10 +16,18 @@ config.set_add_time_horizon(cfg.sub_traj_len-2)
 
 run, logger = config.wandb_init("lapo_stage1", config.get_wandb_cfg(cfg))
 
-idm, wm = utils.create_dynamics_models(cfg.model)
+idm, wm = utils.create_dynamics_models(
+    cfg.model, 
+    image_size=cfg.image_size,
+    sub_traj_len=cfg.sub_traj_len,
+)
 
 
-train_data, test_data = data_loader.load(**cfg)
+train_data, test_data = data_loader.load(
+    **cfg.data,
+    image_size=cfg.image_size,
+    sub_traj_len=cfg.sub_traj_len,
+)
 train_iter = train_data.get_iter(cfg.stage1.bs)
 test_iter = test_data.get_iter(128)
 
