@@ -97,29 +97,25 @@ class Hdf5Dataset(torch.utils.data.Dataset):
             "test": config.dataset.test_fname,
         }[split]
 
-        if isinstance(data_path, str) and isinstance(split_fname, str):
-            # Single base path and a single split filename; may contain wildcard
-            base = Path(data_path)
-            candidate = base / split_fname
-            pattern = str(candidate)
-            if any(ch in split_fname for ch in ["*", "?", "["]):
-                # Expand wildcard only in this scenario
-                matches = sorted({Path(p) for p in __import__('glob').glob(pattern)})
-                assert len(matches) > 0, f"No files matched pattern: {pattern}"
-                data_paths = matches
-                # In this mode, frame_skip must be an int; broadcast to all files
-                assert isinstance(config.dataset.frame_skip, int), (
-                    "When using wildcard in split filename, frame_skip must be an int"
-                )
-            else:
-                data_paths = [candidate]
-        elif isinstance(data_path, list) and isinstance(split_fname, str):
-            data_paths = [Path(p) / split_fname for p in data_path]
-        elif isinstance(data_path, str) and isinstance(split_fname, list):
-            data_paths = [Path(data_path) / fname for fname in split_fname]
-        else:
-            assert len(data_path) == len(split_fname), "data_path and filename lists must have the same length"
-            data_paths = [Path(p) / fname for p, fname in zip(data_path, split_fname)]
+        if isinstance(data_path, str):
+            data_path = [data_path]
+        if isinstance(split_fname, str):
+            split_fname = [split_fname]
+
+        data_paths = []
+        for data_path_i in data_path:
+            for split_fname_i in split_fname:
+                base = Path(data_path_i)
+                candidate = base / split_fname_i
+
+                # split_fname_i may contain wildcard, expand wildcard if so
+                if any(ch in split_fname_i for ch in ["*", "?", "["]):
+                    pattern = str(candidate)
+                    matches = sorted({Path(p) for p in __import__('glob').glob(pattern)})
+                    assert len(matches) > 0, f"No files matched pattern: {pattern}"
+                    data_paths.extend(matches)
+                else:
+                    data_paths.append(candidate)
 
         # Validate data paths exist
         for data_path in data_paths:
@@ -153,6 +149,10 @@ class Hdf5Dataset(torch.utils.data.Dataset):
                 desc=f"Loading {split} dataset ({data_idx + 1}/{len(data_paths)})",
             ):
                 total_steps = int(epi_idx_to_steps[epi_idx])
+
+                if total_steps <= 0:
+                    continue
+
                 num_timestamps += total_steps
 
                 if config.dataset.iterate_frame_between_skip:
@@ -166,6 +166,10 @@ class Hdf5Dataset(torch.utils.data.Dataset):
             total_num_episodes += num_episodes
 
         print(f"{split} dataset has: {total_num_episodes} episodes, {num_timestamps} timestamps, and {len(self.sub_traj_paths)} data points")
+
+    @property
+    def action_space(self):
+        return None
 
     def __len__(self):
         return len(self.sub_traj_paths)
