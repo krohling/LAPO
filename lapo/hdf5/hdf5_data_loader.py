@@ -56,7 +56,7 @@ class HDF5DataStager:
         shuffle=True,
         drop_last=True,
     ) -> Generator[TensorDict, None, None]:
-        print(f"num_workers: {self.num_workers}, prefetch_factor: {self.prefetch_factor}")
+        # print(f"num_workers: {self.num_workers}, prefetch_factor: {self.prefetch_factor}")
         dataloader = DataLoader(
             self.dataset,
             batch_size=batch_size,
