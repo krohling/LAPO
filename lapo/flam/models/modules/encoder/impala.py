@@ -68,7 +68,12 @@ def merge_TC_dims(x: torch.Tensor):
 #     return x.view
 
 class ImpalaCnnEncoder(nn.Module):
-    def __init__(self, encoder_cfg: ImpalaEncoderConfig, image_size: Union[int, Tuple[int, int]], sub_traj_len: int, action_dim: int):
+    def __init__(self, 
+        encoder_cfg: ImpalaEncoderConfig, 
+        image_size: Union[int, Tuple[int, int]], 
+        sub_traj_len: int, 
+        action_dim: int=None
+    ):
         super().__init__()
         print("***ImpalaCnnEncoder.__init__***")
 
@@ -76,9 +81,11 @@ class ImpalaCnnEncoder(nn.Module):
             H = W = image_size
         else:
             H, W = image_size
-        shape = [(3*sub_traj_len)+action_dim, H, W]
 
-        conv_stack = []
+        ch_dim = (3*sub_traj_len) + (action_dim if action_dim is not None else 0)
+        shape = [ch_dim, H, W]
+
+        self.conv_stack = nn.ModuleList()
         self.down_sizes = []
         for out_ch in encoder_cfg.ch_mult:
             print(f"in_shape: {shape}, out_ch: {encoder_cfg.ch * out_ch}")
@@ -86,9 +93,8 @@ class ImpalaCnnEncoder(nn.Module):
             shape = conv_seq.get_output_shape()
             self.down_sizes.append(shape[0])
             print(f"out_shape: {shape}")
-            conv_stack.append(conv_seq)
-        # self.conv_stack = nn.Sequential(*conv_stack)
-        self.conv_stack = conv_stack
+            self.conv_stack.append(conv_seq)
+
         self.conv_out = nn.Conv2d(shape[0], encoder_cfg.z_channels, kernel_size=(1, 1))
         self.feat_dim = encoder_cfg.z_channels
         self.H_feat, self.W_feat = shape[1], shape[2]
@@ -113,7 +119,7 @@ class ImpalaCnnEncoder(nn.Module):
     def D(self):
         return self.feat_dim
 
-    def forward(self, x, action):
+    def forward(self, x, action=None):
         # :arg x:  (..., 3, H, W), normalized to [0, 1]
         # :return: (..., H_feat, W_feat, D)
 
@@ -124,10 +130,11 @@ class ImpalaCnnEncoder(nn.Module):
         x = merge_TC_dims(x)
 
         _, _, h, w = x.shape
-        action = action[:, :, None, None]
 
-        x = torch.cat([x, action.repeat(1, 1, h, w)], dim=1)
-        print(f"x.shape after cat: {x.shape}")
+        if action is not None:
+            action = action[:, :, None, None]
+            x = torch.cat([x, action.repeat(1, 1, h, w)], dim=1)
+            print(f"x.shape after action cat: {x.shape}")
 
         xs = []
         for layer in self.conv_stack:

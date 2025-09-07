@@ -1,5 +1,6 @@
 import config
 import data_loader
+from typing import Union, Tuple
 import numpy as np
 import torch
 import torch.nn as nn
@@ -147,13 +148,27 @@ class WorldModel(nn.Module):
 class EncDecWorldModel(nn.Module):
     """EncDec-based world model"""
 
-    def __init__(self, action_dim, cfg: WMEncDecConfig, image_size: int = 64):
+    def __init__(self, 
+        wm_cfg: WMEncDecConfig, 
+        image_size: Union[int, Tuple[int, int]], 
+        sub_traj_len: int, 
+        action_dim: int=None
+    ):
         super().__init__()
-        encoder_type_cfg = cfg.encoder_all[cfg.encoder_type]
-        decoder_type_cfg = cfg.decoder_all[cfg.decoder_type]
+        encoder_type_cfg = wm_cfg.encoder_all[wm_cfg.encoder_type]
+        decoder_type_cfg = wm_cfg.decoder_all[wm_cfg.decoder_type]
 
-        self.encoder = encoder_library[cfg.encoder_type](image_size, encoder_type_cfg)
-        self.decoder = decoder_library[cfg.decoder_type](decoder_type_cfg)
+        self.encoder = encoder_library[wm_cfg.encoder_type](
+            encoder_type_cfg, 
+            image_size=image_size, 
+            sub_traj_len=sub_traj_len, 
+            action_dim=action_dim
+        )
+        self.decoder = decoder_library[wm_cfg.decoder_type](
+            decoder_type_cfg,
+            down_sizes=self.encoder.down_sizes,
+            action_dim=action_dim
+        )
 
     def forward(self, state_seq, action):
         """
@@ -161,11 +176,22 @@ class EncDecWorldModel(nn.Module):
         action.shape = (B, L)
         """
 
-        raise NotImplementedError("EncDecWorldModel forward not implemented yet")
+        print(f"state_seq.shape: {state_seq.shape}")
+        print(f"action.shape: {action.shape}")
+        z, feat = self.encoder(state_seq, action)
+        print(f"z.shape: {z.shape}")
+        print(f"len(feat): {len(feat)}")
+        result = self.decoder(z, feat, action)
+        print(f"result.shape: {result.shape}")
+
+        return result
 
     def label(self, batch: TensorDict) -> torch.Tensor:
-        
-        raise NotImplementedError("EncDecWorldModel label not implemented yet")
+        wm_in_seq = batch["obs"][:, :-1]
+        wm_targ = batch["obs"][:, -1]
+        la = batch["la_q"]  # TODO: also allow using la(noq)
+        batch["wm_pred"] = self(wm_in_seq, la)
+        return F.mse_loss(batch["wm_pred"], wm_targ)
 
 
 
@@ -398,10 +424,10 @@ class IDM(nn.Module):
         self,
         vq_config: config.VQConfig,
         obs_shape: ObsShapeType,
-        action_dim: int,
         encoder_cfg: IDMEncoderConfig,
-        image_size: int = 64,
-        sub_traj_len: int = 2,
+        image_size: Union[int, Tuple[int, int]], 
+        sub_traj_len: int, 
+        action_dim: int=None
     ):
         super().__init__()
 
@@ -415,9 +441,10 @@ class IDM(nn.Module):
             )
             self.policy_head = nn.Linear(encoder_type_cfg.impala_features, action_dim)
         else:
-            self.encoder = encoder_library[encoder_cfg.encoder_type](image_size, encoder_type_cfg)
+            self.encoder = encoder_library[encoder_cfg.encoder_type](encoder_type_cfg, image_size, sub_traj_len)
 
-            encoder_features = sub_traj_len * self.encoder.N * self.encoder.D
+            encoder_features = self.encoder.N * self.encoder.D
+            print(f"encoder_features: {encoder_features}")
             self.policy_head = nn.Linear(encoder_features, action_dim)
 
         # initialize quantizer
@@ -432,10 +459,11 @@ class IDM(nn.Module):
             x = merge_TC_dims(x)
             la = self.policy_head(F.relu(self.fc(self.conv_stack(x))))
         else:
-            B, T = x.shape[:2]
-            x = x.reshape((B * T,) + x.shape[2:])       # -> (B*T, C, H, W)
-            x = self.encoder(x)                         # -> (B*T, H_feat, W_feat, D)
-            x = x.reshape((B, T*np.prod(x.shape[1:])))  # -> (B, T*H_feat*W_feat*D)
+            print(f"x.shape before encoder: {x.shape}")
+            x, _ = self.encoder(x)                         # -> (B, H_feat, W_feat, D)
+            print(f"x.shape after encoder: {x.shape}")
+
+            x = x.reshape((x.shape[0], np.prod(x.shape[1:])))  # -> (B, H_feat*W_feat*D)
             la = self.policy_head(F.relu(x))            # -> (B, action_dim)
 
         la_q, vq_loss, vq_perp, la_qinds = self.vq(la)
