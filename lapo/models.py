@@ -66,15 +66,21 @@ class WorldModel(nn.Module):
 
     def __init__(self, action_dim, in_depth, out_depth, base_size=16):
         super().__init__()
+        print("***WM.__init__***")
+        print(f"action_dim: {action_dim} in_depth: {in_depth} out_depth: {out_depth} base_size: {base_size}")
+
         b = base_size
 
         # downscaling
         down_sizes = (in_depth + action_dim, b, 2 * b, 4 * b, 8 * b, 16 * b, 32 * b)
+        print(f"down_sizes: {down_sizes}")
         self.down = nn.ModuleList()
         for i, (in_size, out_size) in enumerate(partition(2, 1, down_sizes)):
             if i < len(down_sizes) - 2:
+                print(f"downsample {i}: {in_size} -> {out_size}")
                 self.down.append(DownsampleBlock(in_size, out_size))
             else:
+                print(f"downsample {i} (no pool): {in_size} -> {out_size}")
                 self.down.append(nn.Conv2d(in_size, out_size, 2, 1))
 
         # upscaling
@@ -82,6 +88,7 @@ class WorldModel(nn.Module):
         self.up = nn.ModuleList()
         for i, (in_size, out_size) in enumerate(partition(2, 1, up_sizes)):
             incoming = action_dim if i == 0 else down_sizes[-i - 1]
+            print(f"upsample {i}: {in_size} + {incoming} -> {out_size}")
             self.up.append(UpsampleBlock(in_size + incoming, out_size))
 
         self.final_conv = nn.Sequential(
@@ -97,8 +104,11 @@ class WorldModel(nn.Module):
         action.shape = (B, L)
         """
 
+        print(f"action.shape: {action.shape}")
+        print(f"state_seq.shape: {state_seq.shape}")
         state = merge_TC_dims(state_seq)
 
+        print(f"state.shape: {state.shape}")
         _, _, h, w = state.shape
         action = action[:, :, None, None]
 
@@ -106,16 +116,21 @@ class WorldModel(nn.Module):
         # this seems to work well in practice, but can probably be simplified
 
         # repeat action (batch, dim) across w x h dimensions
+        print(f"action.shape: {action.shape}")
         x = torch.cat([state, action.repeat(1, 1, h, w)], dim=1)
 
         xs = []
+        print(f"x.shape: {x.shape}")
         for layer in self.down:
             x = layer(x)
+            print(f"x.shape: {x.shape}")
             xs.append(x)
 
+        print("done with downsample")
         xs[-1] = action
 
         for i, layer in enumerate(self.up):
+            print(f"torch.cat([x, xs[-i - 1]].shape: {torch.cat([x, xs[-i - 1]], dim=1).shape}")
             x = layer(torch.cat([x, xs[-i - 1]], dim=1))
 
         out = self.final_conv(torch.cat([x, state], dim=1))

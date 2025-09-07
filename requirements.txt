@@ -11,7 +11,7 @@ wandb
 matplotlib
 rich
 torchinfo
-procgen-mirror # procgen package for python 3.11 and 3.12, for other versions use "procgen"
+# procgen-mirror # procgen package for python 3.11 and 3.12, for other versions use "procgen"
 gdown
 h5py
 einops

@@ -85,6 +85,22 @@ def test_step():
     logger(step, wm_loss_test=wm_loss, global_step=step * cfg.stage1.bs, **eval_metrics)
 
 
+def test_multistep_prediction():
+    idm.eval()  # disables idm.vq ema update
+    wm.eval()
+
+    # evaluate IDM + FDM generalization on (action-free) test data
+    raise NotImplementedError(  "Not implemented yet")
+    # batch = next(test_iter)
+    # idm.label(batch)
+    # wm_loss = wm.label(batch)
+
+    # # train latent -> true action decoder and evaluate its predictiveness
+    # _, eval_metrics = utils.eval_latent_repr(train_data, idm)
+
+    # logger(step, wm_loss_test=wm_loss, global_step=step * cfg.stage1.bs, **eval_metrics)
+
+
 for step in loop(cfg.stage1.steps + 1, desc="[green bold](stage-1) Training IDM + FDM"):
     train_step()
 

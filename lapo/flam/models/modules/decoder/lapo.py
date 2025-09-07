@@ -2,6 +2,7 @@
 
 from einops import rearrange
 
+import torch
 import torch.nn as nn
 
 
@@ -36,17 +37,27 @@ class UpsampleBlock(nn.Module):
 
 
 class LapoCnnDecoder(nn.Module):
-    def __init__(self, decoder_cfg: LapoDecoderConfig):
+    def __init__(self, decoder_cfg: LapoDecoderConfig, down_sizes, action_dim=128):
         super().__init__()
+        print("LapoCnnDecoder.__init__")
         ch = decoder_cfg.ch
+
+        # down_sizes[-1] = action_dim
+        down_sizes = list(reversed(down_sizes))
+        # down_sizes[0] += action_dim
+        
+
+        print(f"down_sizes: {down_sizes}")
 
         # up-scaling
         up_sizes = [ch * mult for mult in decoder_cfg.ch_mult]
-        in_sizes = [decoder_cfg.z_channels] + up_sizes[:-1]
+        # in_sizes = [decoder_cfg.z_channels] + up_sizes[:-1]
         out_sizes = up_sizes
         self.up = nn.ModuleList()
-        for i, (in_size, out_size) in enumerate(zip(in_sizes, out_sizes)):
-            self.up.append(UpsampleBlock(in_size, out_size))
+        for i, (in_size, out_size) in enumerate(zip(down_sizes, out_sizes)):
+            print(f"in_size: {in_size} out_size: {out_size}")
+            incoming = action_dim if i == 0 else out_sizes[i - 1]
+            self.up.append(UpsampleBlock(in_size+incoming, out_size))
 
         self.final_conv = nn.Sequential(
             nn.Conv2d(up_sizes[-1], ch, kernel_size=3, stride=1, padding=1),
@@ -55,15 +66,21 @@ class LapoCnnDecoder(nn.Module):
             nn.Conv2d(ch, 3, 1, 1),
         )
 
-    def forward(self, z):
+    def forward(self, z, features, action):
         # :arg z:  (..., H_feat, W_feat, D)
         # :return: (..., 3, H, W)
 
         # preprocess
+        features[-1] = action[:, :, None, None]
         z, ps = pack_one(z, "* h w d")                      # (..., H, W, D) -> (B, H, W, D)
         z = rearrange(z, "b h w d -> b d h w")
+        print(f"z.shape after rearrange: {z.shape}")
 
         for i, layer in enumerate(self.up):
+            
+            print(f"features[-i - 1].shape: {features[-i - 1].shape}")
+            z = torch.cat([z, features[-i - 1]], dim=1)
+            print(f"z.shape: {z.shape}")
             z = layer(z)
 
         z = self.final_conv(z)
