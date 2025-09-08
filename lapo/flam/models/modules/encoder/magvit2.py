@@ -25,8 +25,6 @@ class Magvit2Encoder(nn.Module):
                     action_dim: int=None
                 ):
         super().__init__()
-        print(f"Magvit2Encoder: image_size: {image_size}, sub_traj_len: {sub_traj_len}, action_dim: {action_dim}")
-
         if isinstance(image_size, int):
             H = W = image_size
         else:
@@ -103,28 +101,25 @@ class Magvit2Encoder(nn.Module):
         # :arg x:  (..., 3, H, W), normalized to [0, 1]
         # :return: (..., H_feat, W_feat, D)
 
-        print("*"*20)
-        print(f"x.shape: {x.shape}")
+        print("*****Magvit2Encoder.forward*****")
 
         # preprocess
         # x, ps = pack_one(x, "* d h w")                      # (..., 3, H, W) -> (B, 3, H, W)
         x = merge_TC_dims(x)  # (B, T, 3, H, W) -> (B, T*3, H, W)
-        print(f"x.shape: {x.shape}")
 
         if action is not None:
-            print(f"action.shape: {action.shape}")
             _, _, h, w = x.shape
             action = action[:, :, None, None]
-            print(f"action.shape: {action.shape}")
             x = torch.cat([x, action.repeat(1, 1, h, w)], dim=1)
-            print(f"x.shape after action cat: {x.shape}")
 
         # down
         feat = []
+        print(f"conv_in: {x.shape}")
         x = self.conv_in(x)
         feat.append(x)
 
         for i_level in range(self.num_blocks):
+            print(f"i_level {i_level}: {x.shape}")
             for i_block in range(self.num_res_blocks):
                 x = self.down[i_level].block[i_block](x)
             
@@ -134,10 +129,12 @@ class Magvit2Encoder(nn.Module):
             feat.append(x)
 
         # mid
+        print(f"mid: {x.shape}")
         for res in range(self.num_res_blocks):
             x = self.mid_block[res](x)
         feat.append(x)
 
+        print(f"norm_out & conv_out: {x.shape}")
         x = self.norm_out(x)
         x = swish(x)
         x = self.conv_out(x)
@@ -147,5 +144,7 @@ class Magvit2Encoder(nn.Module):
         # x = unpack_one(x, ps, "* h w d")                    # (B, H_feat, W_feat, D) -> (..., H_feat, W_feat, D)
 
         assert x.shape[-3:] == (self.H_feat, self.W_feat, self.feat_dim)
+
+        print(f"Magvit2Encoder output: {x.shape}, feat len: {len(feat)}")
 
         return x, feat

@@ -215,6 +215,24 @@ class Hdf5Dataset(torch.utils.data.Dataset):
 
         return {int(idx): int(steps) for idx, steps in zip(episode_indices, episode_lengths)}
 
+    def get_full_random_episode(self) -> Dict[str, torch.Tensor]:
+        rand_idx = np.random.randint(len(self.sub_traj_paths))
+        data_path, _, epi_idx, _ = self.sub_traj_paths[rand_idx]
+        with h5py.File(data_path, "r", libver="latest", swmr=True) as f:
+            epi_group = f[f"episode_{epi_idx}"]
+            assert isinstance(epi_group, h5py.Group)
+            total_steps = int(epi_group.attrs["total_steps"])  # type: ignore[index]
+            image = np.ascontiguousarray(epi_group["observations"][0:total_steps])              # (T, H, W, C)
+        
+        image = (torch.from_numpy(image).to(self.dtype) / 255.0) # - 0.5                  # (T, H, W, C)
+        image = rearrange(image, "t h w c -> t c h w")                                  # (T, C, H, W)
+        image = self.resize(image)                                                      # (T, C, H', W')
+        image = image.clip(0.0, 1.0)
+        return {
+            "image": image.to(dtype=self.dtype),
+        }
+        
+
     def __getitem__(self, idx) -> Dict[str, torch.Tensor]:
         data_path, frame_skip, epi_idx, timestamp = self.sub_traj_paths[idx]
         with h5py.File(data_path, "r", libver="latest", swmr=True) as f:
@@ -225,10 +243,10 @@ class Hdf5Dataset(torch.utils.data.Dataset):
 
             image = np.ascontiguousarray(epi_group["observations"][idxes])              # (T, H, W, C)
 
-        image = (torch.from_numpy(image).to(self.dtype) / 255.0) - 0.5                  # (T, H, W, C)
+        image = (torch.from_numpy(image).to(self.dtype) / 255.0) # - 0.5                  # (T, H, W, C)
         image = rearrange(image, "t h w c -> t c h w")                                  # (T, C, H, W)
         image = self.resize(image)                                                      # (T, C, H', W')
-        image = image.clip(-0.5, 0.5)
+        image = image.clip(0.0, 1.0)
 
         sub_traj = {
             "image": image.to(dtype=self.dtype),

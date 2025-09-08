@@ -1,5 +1,6 @@
 import config
 # import data_loader
+from flam.loss.image import ImageLoss
 import hdf5.hdf5_data_loader as data_loader
 import doy
 import paths
@@ -23,13 +24,14 @@ idm, wm = utils.create_dynamics_models(
 )
 
 
+image_loss = ImageLoss(cfg.stage1.image_loss).to(config.DEVICE)
 train_data, test_data = data_loader.load(
     **cfg.data,
     image_size=cfg.image_size,
     sub_traj_len=cfg.sub_traj_len,
 )
 train_iter = train_data.get_iter(cfg.stage1.bs)
-test_iter = test_data.get_iter(128)
+# test_iter = test_data.get_iter(cfg.stage1.bs)
 
 opt, lr_sched = doy.LRScheduler.make(
     all=(
@@ -70,7 +72,7 @@ def train_step():
     )
 
 
-def test_step():
+def test_step(eval_steps=10):
     idm.eval()  # disables idm.vq ema update
     wm.eval()
 
@@ -89,9 +91,28 @@ def test_multistep_prediction():
     idm.eval()  # disables idm.vq ema update
     wm.eval()
 
-    # evaluate IDM + FDM generalization on (action-free) test data
-    raise NotImplementedError(  "Not implemented yet")
-    # batch = next(test_iter)
+    epi_steps = test_data.dataset.get_full_random_episode()
+    print(f"epi_steps['image'].shape: {epi_steps['image'].shape}")
+
+    for i in range(0, epi_steps['image'].shape[0]-cfg.sub_traj_len):
+        print(f"Step {i}:")
+        x = epi_steps['image'][i:i+cfg.sub_traj_len].unsqueeze(0).to(config.DEVICE).contiguous()  # (1, i, C, H, W)
+        # print(f"x.shape: {x.shape}, min: {x.min()}, max: {x.max()}")
+        with torch.no_grad():
+            action_dict, _, _ = idm(x)
+            # print(action_dict['la'])
+            print(f"action_dict['la'].shape: {action_dict['la'].shape}, min: {action_dict['la'].min()}, max: {action_dict['la'].max()}")
+            print(f"x[:, :-1].shape: {x[:, :-1].shape}, min: {x[:, :-1].min()}, max: {x[:, :-1].max()}")
+            pred = wm(x[:, :-1], action_dict['la'])
+            print(f"pred.shape: {pred.shape}, min: {pred.min()}, max: {pred.max()}")
+            target = x[:, -1:]
+            print(f"target.shape: {target.shape}, min: {target.min()}, max: {target.max()}")
+            img_loss, img_logging = image_loss(pred, target)
+            print(f"target.shape: {target.shape}, min: {target.min()}, max: {target.max()}")
+            print(f"img_loss: {img_loss}")
+            print(f"img_logging: {img_logging}")
+
+
     # idm.label(batch)
     # wm_loss = wm.label(batch)
 
@@ -102,7 +123,9 @@ def test_multistep_prediction():
 
 
 for step in loop(cfg.stage1.steps + 1, desc="[green bold](stage-1) Training IDM + FDM"):
-    train_step()
+    # train_step()
+
+    test_multistep_prediction()
 
     # if step % 500 == 0:
     #     test_step()

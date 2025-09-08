@@ -29,7 +29,6 @@ class Magvit2Decoder(nn.Module):
 
         down_sizes = list(reversed(down_sizes))
         ds_idx = 1  # skip the first one, which is the input channel size
-        print(f"Magvit2Decoder: down_sizes: {down_sizes}, action_dim: {action_dim}")
 
         self.mid_block = nn.ModuleList()
         for res_idx in range(self.num_res_blocks):
@@ -43,8 +42,6 @@ class Magvit2Decoder(nn.Module):
         for i_level in reversed(range(self.num_blocks)):
             block = nn.ModuleList()
             block_out = decoder_cfg.ch * decoder_cfg.ch_mult[i_level]
-            print(f"i_level: {i_level}, block_in: {block_in}, block_out: {block_out}, down_size: {down_sizes[ds_idx]}")
-            print(f"AdaptiveGroupNorm(decoder_cfg.z_channels + action_dim, block_in): {decoder_cfg.z_channels + action_dim}, {block_in}")
             self.adaptive.insert(0, AdaptiveGroupNorm(decoder_cfg.z_channels + action_dim, block_in))
             for i_block in range(self.num_res_blocks):
                 in_filters = block_in + down_sizes[ds_idx] if i_block == 0 else block_in
@@ -61,11 +58,10 @@ class Magvit2Decoder(nn.Module):
         self.norm_out = nn.GroupNorm(32, block_in, eps=1e-6)
         self.conv_out = nn.Conv2d(block_in, 3, kernel_size=(3, 3), padding=1)
 
-        print(f"final ds_idx: {ds_idx}, len(down_sizes): {len(down_sizes)}")
-
     def forward(self, z, enc_features: List, action: torch.Tensor=None):
         # :arg z:  (..., H_feat, W_feat, D)
         # :return: (..., 3, H, W)
+        print("*****Magvit2Decoder.forward*****")
 
         enc_features = list(reversed(enc_features))
         feat_idx = 0
@@ -73,49 +69,44 @@ class Magvit2Decoder(nn.Module):
         # preprocess
         z, ps = pack_one(z, "* h w d")                      # (..., H, W, D) -> (B, H, W, D)
         z = rearrange(z, "b h w d -> b d h w")
-        print(f"z.shape after rearrange: {z.shape}")
 
         if action is not None:
             _, _, h, w = z.shape
             enc_features[feat_idx] = action[:, :, None, None].repeat(1, 1, h, w)
 
-        print(f"features[feat_idx].shape: {enc_features[feat_idx].shape}")
+        print(f"torch.cat: {z.shape}, {enc_features[feat_idx].shape}")
         z = torch.cat([z, enc_features[feat_idx]], dim=1)
         feat_idx += 1
         
         style = z.clone()  # for adaptive groupnorm
 
-        print(f"z.shape before conv_in: {z.shape}")
+        print(f"conv_in: {z.shape}")
         z = self.conv_in(z)
-        print(f"z.shape after conv_in: {z.shape}")
+        print(f"torch.cat: {z.shape}, {enc_features[feat_idx].shape}")
         z = torch.cat([z, enc_features[feat_idx]], dim=1)
-        print(f"z.shape after first feat cat: {z.shape}")
         feat_idx += 1
 
         # mid
+        print(f"mid: {z.shape}")
         for res in range(self.num_res_blocks):
             z = self.mid_block[res](z)
-        print(f"z.shape after mid: {z.shape}")
-        # z = torch.cat([z, features[feat_idx]], dim=1)
-        # print(f"z.shape after mid feat cat: {z.shape}")
-        # feat_idx += 1
 
         # upsample
         for i_level in reversed(range(self.num_blocks)):
             # pass in each resblock first adaGN
-            print(f"i_level: {i_level}, z.shape before up: {z.shape}")
             z = self.adaptive[i_level](z, style)
-
-
+            print(f"torch.cat: {z.shape}, {enc_features[feat_idx].shape}")
             z = torch.cat([z, enc_features[feat_idx]], dim=1)
             feat_idx += 1
+
+            print(f"i_level {i_level}: {z.shape}")
             for i_block in range(self.num_res_blocks):
-                print(f"i_block: {i_block}, z.shape before up block: {z.shape}")
                 z = self.up[i_level].block[i_block](z)
 
             if i_level > 0:
                 z = self.up[i_level].upsample(z)
 
+        print(f"norm_out & conv_out: {z.shape}")
         z = self.norm_out(z)
         z = swish(z)
         z = self.conv_out(z)
@@ -123,7 +114,7 @@ class Magvit2Decoder(nn.Module):
         # postprocess
         z = unpack_one(z, ps, "* d h w")                    # (B, 3, H, W) -> (..., 3, H, W)
 
-        print(f"final feat_idx: {feat_idx}, len(features): {len(enc_features)}")
+        print(f"Magvit2Decoder output: {z.shape}")
 
         return z
 
@@ -190,14 +181,12 @@ class AdaptiveGroupNorm(nn.Module):
         self.eps = eps
 
     def forward(self, x, z):
-        print(f"AdaptiveGroupNorm: x.shape: {x.shape}, z.shape: {z.shape}")
         B, C, _, _ = x.shape
 
         # calculate var for scale
         scale = rearrange(z, "b c h w -> b c (h w)")
         scale = scale.var(dim=-1) + self.eps  # not unbias
         scale = scale.sqrt()
-        print(f"scale.shape: {scale.shape}")
         scale = self.gamma(scale).view(B, C, 1, 1)
 
         # calculate mean for bias
