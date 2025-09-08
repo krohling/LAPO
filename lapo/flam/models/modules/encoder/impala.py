@@ -125,13 +125,11 @@ class ImpalaCnnEncoder(nn.Module):
 
         # preprocess
         # x, ps = pack_one(x, "* d h w")                      # (..., 3, H, W) -> (B, 3, H, W)
-        B, T = x.shape[:2]
         print(f"x.shape: {x.shape}")
         x = merge_TC_dims(x)
 
-        _, _, h, w = x.shape
-
         if action is not None:
+            _, _, h, w = x.shape
             action = action[:, :, None, None]
             x = torch.cat([x, action.repeat(1, 1, h, w)], dim=1)
             print(f"x.shape after action cat: {x.shape}")

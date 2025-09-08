@@ -2,6 +2,8 @@
 
 from einops import rearrange
 
+from typing import List
+
 import torch
 import torch.nn as nn
 
@@ -37,14 +39,11 @@ class UpsampleBlock(nn.Module):
 
 
 class LapoCnnDecoder(nn.Module):
-    def __init__(self, decoder_cfg: LapoDecoderConfig, down_sizes, action_dim=128):
+    def __init__(self, decoder_cfg: LapoDecoderConfig, down_sizes: List[int], action_dim: int=128):
         super().__init__()
         print("LapoCnnDecoder.__init__")
         ch = decoder_cfg.ch
-
-        # down_sizes[-1] = action_dim
         down_sizes = list(reversed(down_sizes))
-        # down_sizes[0] += action_dim
         
 
         print(f"down_sizes: {down_sizes}")
@@ -66,20 +65,24 @@ class LapoCnnDecoder(nn.Module):
             nn.Conv2d(ch, 3, 1, 1),
         )
 
-    def forward(self, z, features, action):
+    def forward(self, z, enc_features: List, action: torch.Tensor=None):
         # :arg z:  (..., H_feat, W_feat, D)
         # :return: (..., 3, H, W)
 
         # preprocess
-        features[-1] = action[:, :, None, None]
         z, ps = pack_one(z, "* h w d")                      # (..., H, W, D) -> (B, H, W, D)
         z = rearrange(z, "b h w d -> b d h w")
         print(f"z.shape after rearrange: {z.shape}")
 
+        # concat action to the first feature map
+        if action is not None:
+            _, _, h, w = z.shape
+            enc_features[-1] = action[:, :, None, None].repeat(1, 1, h, w)
+
         for i, layer in enumerate(self.up):
             
-            print(f"features[-i - 1].shape: {features[-i - 1].shape}")
-            z = torch.cat([z, features[-i - 1]], dim=1)
+            print(f"features[-i - 1].shape: {enc_features[-i - 1].shape}")
+            z = torch.cat([z, enc_features[-i - 1]], dim=1)
             print(f"z.shape: {z.shape}")
             z = layer(z)
 
