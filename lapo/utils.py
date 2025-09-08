@@ -39,22 +39,25 @@ def create_dynamics_models(
     idm = IDM(
         model_cfg.vq,
         (idm_in_depth, image_size, image_size),
-        model_cfg.la_dim,
         model_cfg.idm_encoder,
         image_size=image_size,
         sub_traj_len=sub_traj_len,
+        action_dim=model_cfg.la_dim,
     ).to(config.DEVICE)
-
-    wm = WorldModel(
-        model_cfg.la_dim,
-        in_depth=wm_in_depth,
-        out_depth=wm_out_depth,
-        base_size=model_cfg.wm_scale,
-    ).to(config.DEVICE)
-    # wm = EncDecWorldModel(
+    
+    # wm = WorldModel(
     #     model_cfg.la_dim,
-    #     model_cfg.wm_encdec
-    # )
+    #     in_depth=wm_in_depth,
+    #     out_depth=wm_out_depth,
+    #     base_size=model_cfg.wm_scale,
+    # ).to(config.DEVICE)
+    
+    wm = EncDecWorldModel(
+        wm_cfg=model_cfg.wm_encdec,
+        image_size=image_size,
+        sub_traj_len=sub_traj_len-1,
+        action_dim=model_cfg.la_dim,
+    ).to(config.DEVICE)
 
     if state_dicts is not None:
         idm.load_state_dict(state_dicts["idm"])

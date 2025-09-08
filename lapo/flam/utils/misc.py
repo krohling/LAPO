@@ -1,4 +1,7 @@
+from pathlib import Path
 from einops import pack, unpack
+
+REPO_PATH = repo_path = Path(__file__).resolve().parents[1]
 
 def pack_one(t, pattern):
     return pack([t], pattern)

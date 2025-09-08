@@ -9,6 +9,7 @@ from rich.syntax import Syntax
 import torch
 import wandb
 
+from flam.configs.loss.image_cfg import ImageLossConfig
 from flam.configs.models.modules.encoder import EncoderConfig
 from flam.configs.models.modules.decoder import DecoderConfig
 
@@ -78,6 +79,8 @@ class Stage1Config:
     lr: float
     bs: int
     steps: int
+    eval_freq: int
+    image_loss: ImageLossConfig = field(default_factory=ImageLossConfig)
 
 
 @dataclass
