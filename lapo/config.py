@@ -79,6 +79,7 @@ class Stage1Config:
     lr: float
     bs: int
     steps: int
+    eval_freq: int
     image_loss: ImageLossConfig = field(default_factory=ImageLossConfig)
 
 

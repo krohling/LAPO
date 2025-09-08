@@ -92,43 +92,39 @@ def test_multistep_prediction():
     wm.eval()
 
     epi_steps = test_data.dataset.get_full_random_episode()
-    print(f"epi_steps['image'].shape: {epi_steps['image'].shape}")
 
-    for i in range(0, epi_steps['image'].shape[0]-cfg.sub_traj_len):
-        print(f"Step {i}:")
-        x = epi_steps['image'][i:i+cfg.sub_traj_len].unsqueeze(0).to(config.DEVICE).contiguous()  # (1, i, C, H, W)
-        # print(f"x.shape: {x.shape}, min: {x.min()}, max: {x.max()}")
-        with torch.no_grad():
+    with torch.no_grad():
+        losses = []
+        for i in range(0, epi_steps['image'].shape[0]-cfg.sub_traj_len):
+            x = epi_steps['image'][i:i+cfg.sub_traj_len].unsqueeze(0).to(config.DEVICE).contiguous()  # (1, i, C, H, W)
+
             action_dict, _, _ = idm(x)
-            # print(action_dict['la'])
-            print(f"action_dict['la'].shape: {action_dict['la'].shape}, min: {action_dict['la'].min()}, max: {action_dict['la'].max()}")
-            print(f"x[:, :-1].shape: {x[:, :-1].shape}, min: {x[:, :-1].min()}, max: {x[:, :-1].max()}")
             pred = wm(x[:, :-1], action_dict['la'])
-            print(f"pred.shape: {pred.shape}, min: {pred.min()}, max: {pred.max()}")
-            target = x[:, -1:]
-            print(f"target.shape: {target.shape}, min: {target.min()}, max: {target.max()}")
-            img_loss, img_logging = image_loss(pred, target)
-            print(f"target.shape: {target.shape}, min: {target.min()}, max: {target.max()}")
-            print(f"img_loss: {img_loss}")
-            print(f"img_logging: {img_logging}")
+            
+            pred = pred.squeeze()
+            target = x[:, -1:].squeeze()
+            assert pred.shape == target.shape, f"pred.shape: {pred.shape}, target.shape: {target.shape}"
+            losses.append(image_loss(pred, target))
 
-
-    # idm.label(batch)
-    # wm_loss = wm.label(batch)
-
-    # # train latent -> true action decoder and evaluate its predictiveness
-    # _, eval_metrics = utils.eval_latent_repr(train_data, idm)
-
-    # logger(step, wm_loss_test=wm_loss, global_step=step * cfg.stage1.bs, **eval_metrics)
+        episode_loss = torch.stack([l[0] for l in losses]).mean()
+        img_logging = {}
+        for k in losses[0][1].keys():
+            img_logging[k] = torch.stack([l[1][k] for l in losses]).mean()
+        
+        # print("*"*20)
+        # print(f"Step {step}: episode image loss: {episode_loss.item():.44f}")
+        # for k in img_logging.keys():
+        #     print(f"    {k}: {img_logging[k].item():.4f}")
+        # print("*"*20)
+        
+        logger(step, img_loss=episode_loss, global_step=step * cfg.stage1.bs, **img_logging)
 
 
 for step in loop(cfg.stage1.steps + 1, desc="[green bold](stage-1) Training IDM + FDM"):
-    # train_step()
+    train_step()
 
-    test_multistep_prediction()
-
-    # if step % 500 == 0:
-    #     test_step()
+    if step % cfg.stage1.eval_freq == 0:
+        test_multistep_prediction()
 
     if step > 0 and (step % 5_000 == 0 or step == cfg.stage1.steps):
         torch.save(

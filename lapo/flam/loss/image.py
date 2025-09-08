@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from models.modules.loss.lpips import LpipsLoss
+from flam.loss.lpips import LpipsLoss
 
 
 class ImageLoss(nn.Module):

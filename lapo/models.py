@@ -175,14 +175,8 @@ class EncDecWorldModel(nn.Module):
         state_seq.shape = (B, L, C, H, W)
         action.shape = (B, L)
         """
-
-        print(f"state_seq.shape: {state_seq.shape}")
-        print(f"action.shape: {action.shape}")
         z, feat = self.encoder(state_seq, action)
-        print(f"z.shape: {z.shape}")
-        print(f"len(feat): {len(feat)}")
         result = self.decoder(z, feat, action)
-        print(f"result.shape: {result.shape}")
 
         return result
 
@@ -444,7 +438,6 @@ class IDM(nn.Module):
             self.encoder = encoder_library[encoder_cfg.encoder_type](encoder_type_cfg, image_size, sub_traj_len)
 
             encoder_features = self.encoder.N * self.encoder.D
-            print(f"encoder_features: {encoder_features}")
             self.policy_head = nn.Linear(encoder_features, action_dim)
 
         # initialize quantizer
@@ -459,9 +452,7 @@ class IDM(nn.Module):
             x = merge_TC_dims(x)
             la = self.policy_head(F.relu(self.fc(self.conv_stack(x))))
         else:
-            print(f"x.shape before encoder: {x.shape}")
             x, _ = self.encoder(x)                         # -> (B, H_feat, W_feat, D)
-            print(f"x.shape after encoder: {x.shape}")
 
             x = x.reshape((x.shape[0], np.prod(x.shape[1:])))  # -> (B, H_feat*W_feat*D)
             la = self.policy_head(F.relu(x))            # -> (B, action_dim)

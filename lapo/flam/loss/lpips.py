@@ -25,7 +25,7 @@ class LpipsLoss(nn.Module):
             param.requires_grad = False
 
     def load_from_pretrained(self):
-        ckpt = REPO_PATH / "lapo" / "flam" / "models" / "modules" / "loss" / "lpips_vgg.pth"
+        ckpt = REPO_PATH / "loss" / "lpips_vgg.pth"
         self.load_state_dict(torch.load(ckpt, map_location=torch.device("cpu")), strict=False)
         print("loaded pretrained LPIPS loss from {}".format(ckpt))
 

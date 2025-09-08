@@ -101,7 +101,7 @@ class Magvit2Encoder(nn.Module):
         # :arg x:  (..., 3, H, W), normalized to [0, 1]
         # :return: (..., H_feat, W_feat, D)
 
-        print("*****Magvit2Encoder.forward*****")
+        # print("*****Magvit2Encoder.forward*****")
 
         # preprocess
         # x, ps = pack_one(x, "* d h w")                      # (..., 3, H, W) -> (B, 3, H, W)
@@ -114,12 +114,12 @@ class Magvit2Encoder(nn.Module):
 
         # down
         feat = []
-        print(f"conv_in: {x.shape}")
+        # print(f"conv_in: {x.shape}")
         x = self.conv_in(x)
         feat.append(x)
 
         for i_level in range(self.num_blocks):
-            print(f"i_level {i_level}: {x.shape}")
+            # print(f"i_level {i_level}: {x.shape}")
             for i_block in range(self.num_res_blocks):
                 x = self.down[i_level].block[i_block](x)
             
@@ -129,12 +129,12 @@ class Magvit2Encoder(nn.Module):
             feat.append(x)
 
         # mid
-        print(f"mid: {x.shape}")
+        # print(f"mid: {x.shape}")
         for res in range(self.num_res_blocks):
             x = self.mid_block[res](x)
         feat.append(x)
 
-        print(f"norm_out & conv_out: {x.shape}")
+        # print(f"norm_out & conv_out: {x.shape}")
         x = self.norm_out(x)
         x = swish(x)
         x = self.conv_out(x)
@@ -145,6 +145,6 @@ class Magvit2Encoder(nn.Module):
 
         assert x.shape[-3:] == (self.H_feat, self.W_feat, self.feat_dim)
 
-        print(f"Magvit2Encoder output: {x.shape}, feat len: {len(feat)}")
+        # print(f"Magvit2Encoder output: {x.shape}, feat len: {len(feat)}")
 
         return x, feat

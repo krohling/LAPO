@@ -20,6 +20,7 @@ stage1:
   lr: 3e-4
   bs: 128
   steps: 50_000
+  eval_freq: 500
 
 # stage-2 (latent behavior cloning) hyperparameters
 stage2:

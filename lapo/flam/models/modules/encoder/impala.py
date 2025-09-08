@@ -75,7 +75,6 @@ class ImpalaCnnEncoder(nn.Module):
         action_dim: int=None
     ):
         super().__init__()
-        print("***ImpalaCnnEncoder.__init__***")
 
         if isinstance(image_size, int):
             H = W = image_size
@@ -88,11 +87,9 @@ class ImpalaCnnEncoder(nn.Module):
         self.conv_stack = nn.ModuleList()
         self.down_sizes = []
         for out_ch in encoder_cfg.ch_mult:
-            print(f"in_shape: {shape}, out_ch: {encoder_cfg.ch * out_ch}")
             conv_seq = ConvSequence(shape, encoder_cfg.ch * out_ch)
             shape = conv_seq.get_output_shape()
             self.down_sizes.append(shape[0])
-            print(f"out_shape: {shape}")
             self.conv_stack.append(conv_seq)
 
         self.conv_out = nn.Conv2d(shape[0], encoder_cfg.z_channels, kernel_size=(1, 1))
@@ -125,29 +122,24 @@ class ImpalaCnnEncoder(nn.Module):
 
         # preprocess
         # x, ps = pack_one(x, "* d h w")                      # (..., 3, H, W) -> (B, 3, H, W)
-        print(f"x.shape: {x.shape}")
         x = merge_TC_dims(x)
 
         if action is not None:
             _, _, h, w = x.shape
             action = action[:, :, None, None]
             x = torch.cat([x, action.repeat(1, 1, h, w)], dim=1)
-            print(f"x.shape after action cat: {x.shape}")
 
         xs = []
         for layer in self.conv_stack:
             x = layer(x)
-            print(f"x shape after layer: {x.shape}")
             xs.append(x)
 
         x = self.conv_out(F.relu(x))
-        print(f"x shape after conv_out: {x.shape}")
 
         # postprocess
         x = rearrange(x, "b d h w -> b h w d")
         # x = unpack_one(x, ps, "* h w d")                    # (B, H_feat, W_feat, D) -> (..., H_feat, W_feat, D)
         
         # x = x.reshape((B, T,) + x.shape[1:])
-        print(f"final x.shape: {x.shape}")
 
         return x, xs

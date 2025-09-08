@@ -61,7 +61,7 @@ class Magvit2Decoder(nn.Module):
     def forward(self, z, enc_features: List, action: torch.Tensor=None):
         # :arg z:  (..., H_feat, W_feat, D)
         # :return: (..., 3, H, W)
-        print("*****Magvit2Decoder.forward*****")
+        # print("*****Magvit2Decoder.forward*****")
 
         enc_features = list(reversed(enc_features))
         feat_idx = 0
@@ -74,20 +74,20 @@ class Magvit2Decoder(nn.Module):
             _, _, h, w = z.shape
             enc_features[feat_idx] = action[:, :, None, None].repeat(1, 1, h, w)
 
-        print(f"torch.cat: {z.shape}, {enc_features[feat_idx].shape}")
+        # print(f"torch.cat: {z.shape}, {enc_features[feat_idx].shape}")
         z = torch.cat([z, enc_features[feat_idx]], dim=1)
         feat_idx += 1
         
         style = z.clone()  # for adaptive groupnorm
 
-        print(f"conv_in: {z.shape}")
+        # print(f"conv_in: {z.shape}")
         z = self.conv_in(z)
-        print(f"torch.cat: {z.shape}, {enc_features[feat_idx].shape}")
+        # print(f"torch.cat: {z.shape}, {enc_features[feat_idx].shape}")
         z = torch.cat([z, enc_features[feat_idx]], dim=1)
         feat_idx += 1
 
         # mid
-        print(f"mid: {z.shape}")
+        # print(f"mid: {z.shape}")
         for res in range(self.num_res_blocks):
             z = self.mid_block[res](z)
 
@@ -95,18 +95,18 @@ class Magvit2Decoder(nn.Module):
         for i_level in reversed(range(self.num_blocks)):
             # pass in each resblock first adaGN
             z = self.adaptive[i_level](z, style)
-            print(f"torch.cat: {z.shape}, {enc_features[feat_idx].shape}")
+            # print(f"torch.cat: {z.shape}, {enc_features[feat_idx].shape}")
             z = torch.cat([z, enc_features[feat_idx]], dim=1)
             feat_idx += 1
 
-            print(f"i_level {i_level}: {z.shape}")
+            # print(f"i_level {i_level}: {z.shape}")
             for i_block in range(self.num_res_blocks):
                 z = self.up[i_level].block[i_block](z)
 
             if i_level > 0:
                 z = self.up[i_level].upsample(z)
 
-        print(f"norm_out & conv_out: {z.shape}")
+        # print(f"norm_out & conv_out: {z.shape}")
         z = self.norm_out(z)
         z = swish(z)
         z = self.conv_out(z)
@@ -114,7 +114,7 @@ class Magvit2Decoder(nn.Module):
         # postprocess
         z = unpack_one(z, ps, "* d h w")                    # (B, 3, H, W) -> (..., 3, H, W)
 
-        print(f"Magvit2Decoder output: {z.shape}")
+        # print(f"Magvit2Decoder output: {z.shape}")
 
         return z
 
