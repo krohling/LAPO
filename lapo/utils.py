@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from models import IDM, Policy, WorldModel
+from models import IDM, Policy, WorldModel, EncDecWorldModel
 from tensordict import TensorDict
 from torch import Tensor
 from torch.utils.data import DataLoader
@@ -26,7 +26,10 @@ def create_decoder(in_dim, out_dim, device=config.DEVICE, hidden_sizes=(128, 128
 
 
 def create_dynamics_models(
-    model_cfg: config.ModelConfig, state_dicts: dict | None = None
+    model_cfg: config.ModelConfig, 
+    image_size: int = 64,
+    sub_traj_len: int = 2,
+    state_dicts: dict | None = None,
 ) -> tuple[IDM, WorldModel]:
     obs_depth = 3
     idm_in_depth = obs_depth * (2 + config.get_add_time_horizon())
@@ -35,16 +38,25 @@ def create_dynamics_models(
 
     idm = IDM(
         model_cfg.vq,
-        (idm_in_depth, 64, 64),
-        model_cfg.la_dim,
-        model_cfg.idm_impala_scale,
+        (idm_in_depth, image_size, image_size),
+        model_cfg.idm_encoder,
+        image_size=image_size,
+        sub_traj_len=sub_traj_len,
+        action_dim=model_cfg.la_dim,
     ).to(config.DEVICE)
-
-    wm = WorldModel(
-        model_cfg.la_dim,
-        in_depth=wm_in_depth,
-        out_depth=wm_out_depth,
-        base_size=model_cfg.wm_scale,
+    
+    # wm = WorldModel(
+    #     model_cfg.la_dim,
+    #     in_depth=wm_in_depth,
+    #     out_depth=wm_out_depth,
+    #     base_size=model_cfg.wm_scale,
+    # ).to(config.DEVICE)
+    
+    wm = EncDecWorldModel(
+        wm_cfg=model_cfg.wm_encdec,
+        image_size=image_size,
+        sub_traj_len=sub_traj_len-1,
+        action_dim=model_cfg.la_dim,
     ).to(config.DEVICE)
 
     if state_dicts is not None:
