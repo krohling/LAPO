@@ -123,7 +123,7 @@ def test_multistep_prediction():
 for step in loop(cfg.stage1.steps + 1, desc="[green bold](stage-1) Training IDM + FDM"):
     train_step()
 
-    if step % cfg.stage1.eval_freq == 0:
+    if step > 0 and step % cfg.stage1.eval_freq == 0:
         test_multistep_prediction()
 
     if step > 0 and (step % 5_000 == 0 or step == cfg.stage1.steps):

@@ -41,25 +41,19 @@ class UpsampleBlock(nn.Module):
 class LapoCnnDecoder(nn.Module):
     def __init__(self, decoder_cfg: LapoDecoderConfig, down_sizes: List[int], action_dim: int=128):
         super().__init__()
-        # print("LapoCnnDecoder.__init__")
         ch = decoder_cfg.ch
         down_sizes = list(reversed(down_sizes))
-        
-
-        # print(f"down_sizes: {down_sizes}")
+        down_sizes[0] = decoder_cfg.z_channels
 
         # up-scaling
-        up_sizes = [ch * mult for mult in decoder_cfg.ch_mult]
-        # in_sizes = [decoder_cfg.z_channels] + up_sizes[:-1]
-        out_sizes = up_sizes
+        out_sizes = [ch * mult for mult in decoder_cfg.ch_mult]
         self.up = nn.ModuleList()
         for i, (in_size, out_size) in enumerate(zip(down_sizes, out_sizes)):
-            # print(f"in_size: {in_size} out_size: {out_size}")
             incoming = action_dim if i == 0 else out_sizes[i - 1]
             self.up.append(UpsampleBlock(in_size+incoming, out_size))
 
         self.final_conv = nn.Sequential(
-            nn.Conv2d(up_sizes[-1], ch, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(out_sizes[-1], ch, kernel_size=3, stride=1, padding=1),
             ResidualLayer(ch, ch // 2, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
             nn.Conv2d(ch, 3, 1, 1),
@@ -72,7 +66,6 @@ class LapoCnnDecoder(nn.Module):
         # preprocess
         z, ps = pack_one(z, "* h w d")                      # (..., H, W, D) -> (B, H, W, D)
         z = rearrange(z, "b h w d -> b d h w")
-        # print(f"z.shape after rearrange: {z.shape}")
 
         # concat action to the first feature map
         if action is not None:
@@ -80,10 +73,7 @@ class LapoCnnDecoder(nn.Module):
             enc_features[-1] = action[:, :, None, None].repeat(1, 1, h, w)
 
         for i, layer in enumerate(self.up):
-            
-            # print(f"features[-i - 1].shape: {enc_features[-i - 1].shape}")
             z = torch.cat([z, enc_features[-i - 1]], dim=1)
-            # print(f"z.shape: {z.shape}")
             z = layer(z)
 
         z = self.final_conv(z)

@@ -121,7 +121,6 @@ class ImpalaCnnEncoder(nn.Module):
         # :return: (..., H_feat, W_feat, D)
 
         # preprocess
-        # x, ps = pack_one(x, "* d h w")                      # (..., 3, H, W) -> (B, 3, H, W)
         x = merge_TC_dims(x)
 
         if action is not None:
@@ -129,17 +128,14 @@ class ImpalaCnnEncoder(nn.Module):
             action = action[:, :, None, None]
             x = torch.cat([x, action.repeat(1, 1, h, w)], dim=1)
 
-        xs = []
+        feat = []
         for layer in self.conv_stack:
             x = layer(x)
-            xs.append(x)
+            feat.append(x)
 
         x = self.conv_out(F.relu(x))
 
         # postprocess
         x = rearrange(x, "b d h w -> b h w d")
-        # x = unpack_one(x, ps, "* h w d")                    # (B, H_feat, W_feat, D) -> (..., H_feat, W_feat, D)
-        
-        # x = x.reshape((B, T,) + x.shape[1:])
 
-        return x, xs
+        return x, feat
