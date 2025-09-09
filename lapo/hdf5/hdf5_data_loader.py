@@ -10,6 +10,16 @@ from config import DEVICE
 from hdf5.hdf5_cfg import DatasetConfig, Hdf5DatasetConfig
 from hdf5.hdf5_dataset import Hdf5Dataset
 
+def format_fname(fname: Union[str, List[str]]) -> List[str]:
+    if isinstance(fname, str):
+        if ',' in fname:
+            fname = fname.split(',')
+        else:
+            fname = [fname]
+
+    fname = [f.replace("\\", "").strip() for f in fname]
+    return fname
+
 class HDF5DataStager:
     def __init__(
         self,
@@ -37,9 +47,9 @@ class HDF5DataStager:
                 rank=0,
                 dataset=Hdf5DatasetConfig(
                     data_path=data_path,
-                    train_fname=train_fname,
-                    valid_fname=valid_fname,
-                    test_fname=test_fname,
+                    train_fname=format_fname(train_fname),
+                    valid_fname=format_fname(valid_fname),
+                    test_fname=format_fname(test_fname),
                     frame_skip=frame_skip,
                     iterate_frame_between_skip=iterate_frame_between_skip,
                 )

@@ -1,0 +1,239 @@
+# =============================================================================
+# TRAINING CONFIGURATION
+# =============================================================================
+DATASET="${1:-multigrid}"                                   # multigrid, procgen, sports, nuplan, gr00t, egtea
+echo "Using dataset: $DATASET"
+
+DATA_PATH_BASE="/scratch/cluster/zzwang_new/flam_data"
+ENV_NAME="flam"
+LEARNING_RATE=3e-4
+BATCH_SIZE=128
+TRAINING_STEPS=50000
+EVAL_FREQ=500
+LPIPS_WEIGHT=1.0
+EVAL_FID=false
+EVAL_FVD=false
+NUM_WORKERS=8
+PREFETCH_FACTOR=4
+
+
+# =============================================================================
+# MODEL CONFIGURATION
+# =============================================================================
+WM_SCALE=24
+POLICY_IMPALA_SCALE=4
+
+# Vector Quantization (VQ) Settings
+VQ_ENABLED=true
+VQ_NUM_CODEBOOKS=2
+VQ_NUM_DISCRETE_LATENTS=4
+VQ_EMB_DIM=16
+VQ_NUM_EMBS=64
+VQ_COMMITMENT_COST=0.05
+VQ_DECAY=0.999
+
+# =============================================================================
+# ENCODER/DECODER CONFIGURATION
+# =============================================================================
+
+# WM MagViT2 Encoder Defaults
+WM_ENCODER_MAGVIT2_CH=128
+WM_ENCODER_MAGVIT2_NUM_RES_BLOCKS=2
+WM_ENCODER_MAGVIT2_CH_MULT=[1,1,2,2,4]
+WM_ENCODER_MAGVIT2_Z_CHANNELS=8
+
+# WM Impala Encoder Defaults
+WM_ENCODER_IMPALA_CH=24
+WM_ENCODER_IMPALA_NUM_RES_BLOCKS=4
+WM_ENCODER_IMPALA_CH_MULT=[1,2,4,8,16,32]
+WM_ENCODER_IMPALA_Z_CHANNELS=768
+
+# WM MagViT2 Decoder Defaults
+WM_DECODER_MAGVIT2_CH=128
+WM_DECODER_MAGVIT2_NUM_RES_BLOCKS=2
+WM_DECODER_MAGVIT2_CH_MULT=[1,1,2,2,4]
+WM_DECODER_MAGVIT2_Z_CHANNELS=8
+
+# WM Lapo Decoder Defaults
+WM_DECODER_LAPO_CH=24
+WM_DECODER_LAPO_CH_MULT=[32,16,8,4,2,1,1]
+WM_DECODER_LAPO_Z_CHANNELS=768
+
+# IDM MagViT2 Encoder Defaults
+IDM_ENCODER_MAGVIT2_CH=128
+IDM_ENCODER_MAGVIT2_NUM_RES_BLOCKS=2
+IDM_ENCODER_MAGVIT2_CH_MULT=[1,1,2,2,4]
+IDM_ENCODER_MAGVIT2_Z_CHANNELS=8
+
+# IDM Impala Encoder Defaults
+IDM_ENCODER_IMPALA_CH=24
+IDM_ENCODER_IMPALA_NUM_RES_BLOCKS=4
+IDM_ENCODER_IMPALA_CH_MULT=[1,2,4,8,16,32]
+IDM_ENCODER_IMPALA_Z_CHANNELS=768
+
+
+# =============================================================================
+# DATASET CONFIGURATION
+# =============================================================================
+
+if [ "$DATASET" = "multigrid" ]; then
+    EXP_NAME="multigrid"
+
+    # Data
+    DATA_PATH="$DATA_PATH_BASE/multigrid/"
+    IMAGE_SIZE=128
+    SUB_TRAJ_LEN=2
+    FRAME_SKIP=1
+    ITERATE_FRAME_BETWEEN_SKIP=true
+    TRAIN_DATASET_ID="empty-agent_4-v0/data/main_data.hdf5"     # v0: train (1M), v1: valid (10k), v2: test (100k)
+    TEST_DATASET_ID="empty-agent_4-v1/data/main_data.hdf5"
+
+    # Encoder/Decoder settings
+    WM_ENCODER_TYPE="impala"
+    WM_DECODER_TYPE="lapo"
+    IDM_ENCODER_TYPE="impala"
+elif [ "$DATASET" = "procgen" ]; then
+    EXP_NAME="procgen"
+    PROCGEN_USE_BACKGROUND=False
+
+    # Data
+    DATA_PATH="$DATA_PATH_BASE/procgen/"
+    IMAGE_SIZE=224
+    SUB_TRAJ_LEN=2
+    FRAME_SKIP=1
+    ITERATE_FRAME_BETWEEN_SKIP=true
+    TRAIN_DATASET_ID="\\*background_${PROCGEN_USE_BACKGROUND}-v0/data/main_data.hdf5"
+    TEST_DATASET_ID="\\*background_${PROCGEN_USE_BACKGROUND}-v1/data/main_data.hdf5"
+
+    # Encoder/Decoder settings
+    WM_ENCODER_TYPE="impala"
+    WM_DECODER_TYPE="lapo"
+    IDM_ENCODER_TYPE="impala"
+elif [ "$DATASET" = "sports" ]; then
+    EXP_NAME="sports"
+    BATCH_SIZE=8
+
+    # Data
+    DATA_PATH="$DATA_PATH_BASE/"
+    IMAGE_SIZE=224
+    SUB_TRAJ_LEN=2
+    FRAME_SKIP=4
+    ITERATE_FRAME_BETWEEN_SKIP=true
+    TRAIN_DATASET_ID="basketball/train.hdf5,sports_mot/train.hdf5,tennis_play_video_generation/train.hdf5,tenniset/train.hdf5,volleyball/train.hdf5"
+    TEST_DATASET_ID="basketball/valid.hdf5,sports_mot/valid.hdf5,tennis_play_video_generation/valid.hdf5,tenniset/valid.hdf5,volleyball/valid.hdf5"
+
+    # Encoder/Decoder settings
+    WM_ENCODER_TYPE="magvit2"
+    WM_DECODER_TYPE="magvit2"
+    IDM_ENCODER_TYPE="magvit2"
+elif [ "$DATASET" = "nuplan" ]; then
+    EXP_NAME="nuplan"
+    BATCH_SIZE=8
+
+    # Data
+    DATA_PATH="$DATA_PATH_BASE/"
+    IMAGE_SIZE=224
+    SUB_TRAJ_LEN=2
+    FRAME_SKIP=2
+    ITERATE_FRAME_BETWEEN_SKIP=true
+    TRAIN_DATASET_ID="nuplan_mini/train_CAM_F0.hdf5,nuplan_val/train_CAM_F0.hdf5"
+    TEST_DATASET_ID="nuplan_mini/valid_CAM_F0.hdf5,nuplan_val/valid_CAM_F0.hdf5"
+
+    # Encoder/Decoder settings
+    WM_ENCODER_TYPE="magvit2"
+    WM_DECODER_TYPE="magvit2"
+    IDM_ENCODER_TYPE="magvit2"
+elif [ "$DATASET" = "gr00t" ]; then
+    EXP_NAME="gr00t"
+    BATCH_SIZE=8
+
+    # Data
+    DATA_PATH="$DATA_PATH_BASE/"
+    IMAGE_SIZE=224
+    SUB_TRAJ_LEN=2
+    FRAME_SKIP=1
+    ITERATE_FRAME_BETWEEN_SKIP=true
+    TRAIN_DATASET_ID="gr00t/train.hdf5"
+    TEST_DATASET_ID="gr00t/test.hdf5"
+
+    # Encoder/Decoder settings
+    WM_ENCODER_TYPE="magvit2"
+    WM_DECODER_TYPE="magvit2"
+    IDM_ENCODER_TYPE="magvit2"
+elif [ "$DATASET" = "egtea" ]; then
+    EXP_NAME="egtea"
+    BATCH_SIZE=8
+
+    # Data
+    DATA_PATH="$DATA_PATH_BASE/"
+    IMAGE_SIZE=224
+    SUB_TRAJ_LEN=2
+    FRAME_SKIP=1
+    ITERATE_FRAME_BETWEEN_SKIP=true
+    TRAIN_DATASET_ID="egtea/train.hdf5"
+    TEST_DATASET_ID="egtea/test.hdf5"
+
+    # Encoder/Decoder settings
+    WM_ENCODER_TYPE="magvit2"
+    WM_DECODER_TYPE="magvit2"
+    IDM_ENCODER_TYPE="magvit2"
+fi
+
+
+# =============================================================================
+# RUN TRAINING
+# =============================================================================
+python stage1_idm.py \
+    env_name="$ENV_NAME" \
+    exp_name="$EXP_NAME" \
+    image_size=$IMAGE_SIZE \
+    sub_traj_len=$SUB_TRAJ_LEN \
+    data.path="$DATA_PATH" \
+    data.train_fname="$TRAIN_DATASET_ID" \
+    data.test_fname="$TEST_DATASET_ID" \
+    data.frame_skip=$FRAME_SKIP \
+    data.iterate_frame_between_skip=$ITERATE_FRAME_BETWEEN_SKIP \
+    data.num_workers=$NUM_WORKERS \
+    data.prefetch_factor=$PREFETCH_FACTOR \
+    model.wm_scale=$WM_SCALE \
+    model.policy_impala_scale=$POLICY_IMPALA_SCALE \
+    model.vq.enabled=$VQ_ENABLED \
+    model.vq.num_codebooks=$VQ_NUM_CODEBOOKS \
+    model.vq.num_discrete_latents=$VQ_NUM_DISCRETE_LATENTS \
+    model.vq.emb_dim=$VQ_EMB_DIM \
+    model.vq.num_embs=$VQ_NUM_EMBS \
+    model.vq.commitment_cost=$VQ_COMMITMENT_COST \
+    model.vq.decay=$VQ_DECAY \
+    model.idm_encoder.encoder_type="$IDM_ENCODER_TYPE" \
+    model.idm_encoder.encoder_all.magvit2.ch=$IDM_ENCODER_MAGVIT2_CH \
+    model.idm_encoder.encoder_all.magvit2.num_res_blocks=$IDM_ENCODER_MAGVIT2_NUM_RES_BLOCKS \
+    model.idm_encoder.encoder_all.magvit2.ch_mult=$IDM_ENCODER_MAGVIT2_CH_MULT \
+    model.idm_encoder.encoder_all.magvit2.z_channels=$IDM_ENCODER_MAGVIT2_Z_CHANNELS \
+    model.idm_encoder.encoder_all.impala.ch=$IDM_ENCODER_IMPALA_CH \
+    model.idm_encoder.encoder_all.impala.num_res_blocks=$IDM_ENCODER_IMPALA_NUM_RES_BLOCKS \
+    model.idm_encoder.encoder_all.impala.ch_mult=$IDM_ENCODER_IMPALA_CH_MULT \
+    model.idm_encoder.encoder_all.impala.z_channels=$IDM_ENCODER_IMPALA_Z_CHANNELS \
+    model.wm_encdec.encoder_type="$WM_ENCODER_TYPE" \
+    model.wm_encdec.encoder_all.magvit2.ch=$WM_ENCODER_MAGVIT2_CH \
+    model.wm_encdec.encoder_all.magvit2.num_res_blocks=$WM_ENCODER_MAGVIT2_NUM_RES_BLOCKS \
+    model.wm_encdec.encoder_all.magvit2.ch_mult=$WM_ENCODER_MAGVIT2_CH_MULT \
+    model.wm_encdec.encoder_all.magvit2.z_channels=$WM_ENCODER_MAGVIT2_Z_CHANNELS \
+    model.wm_encdec.encoder_all.impala.ch=$WM_ENCODER_IMPALA_CH \
+    model.wm_encdec.encoder_all.impala.num_res_blocks=$WM_ENCODER_IMPALA_NUM_RES_BLOCKS \
+    model.wm_encdec.encoder_all.impala.ch_mult=$WM_ENCODER_IMPALA_CH_MULT \
+    model.wm_encdec.encoder_all.impala.z_channels=$WM_ENCODER_IMPALA_Z_CHANNELS \
+    model.wm_encdec.decoder_type="$WM_DECODER_TYPE" \
+    model.wm_encdec.decoder_all.magvit2.ch=$WM_DECODER_MAGVIT2_CH \
+    model.wm_encdec.decoder_all.magvit2.num_res_blocks=$WM_DECODER_MAGVIT2_NUM_RES_BLOCKS \
+    model.wm_encdec.decoder_all.magvit2.ch_mult=$WM_DECODER_MAGVIT2_CH_MULT \
+    model.wm_encdec.decoder_all.magvit2.z_channels=$WM_DECODER_MAGVIT2_Z_CHANNELS \
+    model.wm_encdec.decoder_all.lapo.ch=$WM_DECODER_LAPO_CH \
+    model.wm_encdec.decoder_all.lapo.ch_mult=$WM_DECODER_LAPO_CH_MULT \
+    model.wm_encdec.decoder_all.lapo.z_channels=$WM_DECODER_LAPO_Z_CHANNELS \
+    stage1.lr=$LEARNING_RATE \
+    stage1.bs=$BATCH_SIZE \
+    stage1.steps=$TRAINING_STEPS \
+    stage1.eval_freq=$EVAL_FREQ \
+    stage1.image_loss.lpips_weight=$LPIPS_WEIGHT \
+    stage1.image_loss.eval_fid=$EVAL_FID \
+    stage1.image_loss.eval_fvd=$EVAL_FVD
