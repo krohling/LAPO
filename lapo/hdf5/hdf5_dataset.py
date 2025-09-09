@@ -140,7 +140,10 @@ class Hdf5Dataset(torch.utils.data.Dataset):
                         e for e in list(f.keys()) 
                         if "episode" in e and isinstance(f[e], h5py.Group)
                     ])
-                episode_indices = [int(ep.split('_')[1]) for ep in f.keys() if "episode_" in ep and isinstance(f[ep], h5py.Group) and "observations" in f[ep]]
+                episode_indices = sorted([
+                    int(ep.split('_')[1]) for ep in f.keys() 
+                    if "episode_" in ep and isinstance(f[ep], h5py.Group) and "observations" in f[ep]
+                ])
 
             epi_idx_to_steps = self._get_episode_steps(str(data_path), episode_indices)
 
