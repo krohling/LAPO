@@ -211,11 +211,14 @@ class Hdf5Dataset(torch.utils.data.Dataset):
             torch.distributed.barrier()
 
         if not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0:
-            with h5py.File(data_file_path, "a") as f:
-                # Overwrite or create the single cache dataset
-                if "episode_lengths" in f:
-                    del f["episode_lengths"]
-                f.create_dataset("episode_lengths", data=np.array(episode_lengths, dtype=np.int64))
+            try:
+                with h5py.File(data_file_path, "a") as f:
+                    # Overwrite or create the single cache dataset
+                    if "episode_lengths" in f:
+                        del f["episode_lengths"]
+                    f.create_dataset("episode_lengths", data=np.array(episode_lengths, dtype=np.int64))
+            except Exception:
+                print(f"Warning: could not write episode_lengths to {data_file_path}")
 
         return {int(idx): int(steps) for idx, steps in zip(episode_indices, episode_lengths)}
 
