@@ -13,8 +13,8 @@ EVAL_FREQ=500
 LPIPS_WEIGHT=1.0
 EVAL_FID=false
 EVAL_FVD=false
-NUM_WORKERS=8
-PREFETCH_FACTOR=4
+NUM_WORKERS=4
+PREFETCH_FACTOR=2
 
 
 # =============================================================================
@@ -187,7 +187,7 @@ fi
 # =============================================================================
 # RUN TRAINING
 # =============================================================================
-python stage1_idm.py \
+python -u stage1_idm.py \
     env_name="$ENV_NAME" \
     exp_name="${EXP_NAME}_$(date +%Y%m%d_%H%M%S)" \
     image_size=$IMAGE_SIZE \
