@@ -121,7 +121,7 @@ elif [ "$DATASET" = "sports" ]; then
     FRAME_SKIP=4
     ITERATE_FRAME_BETWEEN_SKIP=true
     TRAIN_DATASET_ID="basketball/train.hdf5,sports_mot/train.hdf5,tennis_play_video_generation/train.hdf5,tenniset/train.hdf5,volleyball/train.hdf5"
-    TEST_DATASET_ID="basketball/valid.hdf5,sports_mot/valid.hdf5,tennis_play_video_generation/valid.hdf5,tenniset/valid.hdf5,volleyball/valid.hdf5"
+    TEST_DATASET_ID="basketball/test.hdf5,sports_mot/test.hdf5,tennis_play_video_generation/test.hdf5,tenniset/test.hdf5,volleyball/test.hdf5"
 
     # Encoder/Decoder settings
     WM_ENCODER_TYPE="magvit2"
@@ -138,7 +138,7 @@ elif [ "$DATASET" = "nuplan" ]; then
     FRAME_SKIP=2
     ITERATE_FRAME_BETWEEN_SKIP=true
     TRAIN_DATASET_ID="nuplan_mini/train_CAM_F0.hdf5,nuplan_val/train_CAM_F0.hdf5"
-    TEST_DATASET_ID="nuplan_mini/valid_CAM_F0.hdf5,nuplan_val/valid_CAM_F0.hdf5"
+    TEST_DATASET_ID="nuplan_mini/test_CAM_F0.hdf5,nuplan_val/test_CAM_F0.hdf5"
 
     # Encoder/Decoder settings
     WM_ENCODER_TYPE="magvit2"
@@ -178,6 +178,9 @@ elif [ "$DATASET" = "egtea" ]; then
     WM_ENCODER_TYPE="magvit2"
     WM_DECODER_TYPE="magvit2"
     IDM_ENCODER_TYPE="magvit2"
+else
+    echo "Unknown dataset: $DATASET"
+    exit 1
 fi
 
 
@@ -186,7 +189,7 @@ fi
 # =============================================================================
 python stage1_idm.py \
     env_name="$ENV_NAME" \
-    exp_name="$EXP_NAME" \
+    exp_name="${EXP_NAME}_$(date +%Y%m%d_%H%M%S)" \
     image_size=$IMAGE_SIZE \
     sub_traj_len=$SUB_TRAJ_LEN \
     data.path="$DATA_PATH" \
