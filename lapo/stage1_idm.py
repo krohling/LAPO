@@ -1,12 +1,17 @@
+import wandb
 import config
 # import data_loader
-from flam.loss.image import ImageLoss
-import hdf5.hdf5_data_loader as data_loader
 import doy
 import paths
 import torch
 import utils
+import time
+import random
 from doy import loop
+
+from flam.utils.plot.plot_comparison import plot_original_recon_rollout
+from flam.loss.image import ImageLoss
+import hdf5.hdf5_data_loader as data_loader
 
 cfg = config.get()
 doy.print("[bold green]Running LAPO stage 1 (IDM/FDM training) with config:")
@@ -87,43 +92,100 @@ def test_step(eval_steps=10):
     logger(step, wm_loss_test=wm_loss, global_step=step * cfg.stage1.bs, **eval_metrics)
 
 
-def test_multistep_prediction():
+def test_multistep_prediction(n_steps: int=10, n_rec_episodes: int=3):
+    start_time = time.time()
     idm.eval()  # disables idm.vq ema update
     wm.eval()
 
-    epi_steps = test_data.dataset.get_full_random_episode()
+    episodes = test_data.dataset.get_all_episodes()[:5]
+    epi_rec_images_indices = random.sample(range(len(episodes)), k=n_rec_episodes)
+    rec_gt_images = {k: [] for k in epi_rec_images_indices}
+    rec_pred_images = {k: [] for k in epi_rec_images_indices}
 
     with torch.no_grad():
+        T = cfg.sub_traj_len
         losses = []
-        for i in range(0, epi_steps['image'].shape[0]-cfg.sub_traj_len):
-            x = epi_steps['image'][i:i+cfg.sub_traj_len].unsqueeze(0).to(config.DEVICE).contiguous()  # (1, i, C, H, W)
+        for epi_idx in range(len(episodes)):
+            epi_steps = episodes[epi_idx]
 
-            action_dict, _, _ = idm(x)
-            pred = wm(x[:, :-1], action_dict['la'])
+            for t in range(epi_steps['image'].shape[0]-T-n_steps+2):
+
+                # Infer actions
+                l_actions = []
+                for i in range(n_steps):
+                    idx = t+i
+                    x = epi_steps['image'][idx:idx+T].unsqueeze(0).to(config.DEVICE).contiguous()  # (1, T, C, H, W)
+
+                    action_dict, _, _ = idm(x)
+                    l_actions.append(action_dict)
+
+                # Predict images
+                pred_xs = []
+                for i in range(n_steps):
+                    idx = t+i
+
+                    # prepend real images if not enough predicted images
+                    num_real_x = T - len(pred_xs) - 1
+                    if num_real_x > 0:
+                        x = epi_steps['image'][idx:idx+num_real_x].unsqueeze(0).to(config.DEVICE).contiguous()  # (1, num_real, C, H, W)
+                        if len(pred_xs) > 0:
+                            # (1, num_real, C, H, W) + (1, len(pred_xs), C, H, W) = (1, T-1, C, H, W)
+                            x = torch.cat([x, *pred_xs], dim=1)  
+                    else:
+                        x = torch.cat(pred_xs, dim=1)  # (1, T-1, C, H, W)
+                    
+                    # infer next image
+                    assert x.shape[1] == T-1, f"x.shape: {x.shape}, len(pred_xs): {len(pred_xs)}"
+                    pred = wm(x, l_actions[i]['la'])
+                    pred = pred.squeeze()
+
+                    # compute loss using the last predicted image and target
+                    target_idx = idx+T-1
+                    target = epi_steps['image'][target_idx].to(config.DEVICE)
+                    assert pred.shape == target.shape, f"pred.shape: {pred.shape}, target.shape: {target.shape}"
+                    losses.append(image_loss(pred, target))
+
+                    if t == 0 and epi_idx in rec_gt_images:
+                        if i == 0:
+                            rec_gt_images[epi_idx].append(epi_steps['image'][target_idx-1][None, None].to(config.DEVICE))  # (1, 1, C, H, W)
+
+                        rec_gt_images[epi_idx].append(target[None, None].to(config.DEVICE))  # (1, 1, C, H, W)
+                        rec_pred_images[epi_idx].append(pred[None, None].to(config.DEVICE))  # (1, 1, C, H, W)
+
+                    # append predicted image
+                    if t == 0 and len(pred_xs) < T-1:
+                        pred_xs.append(pred[None, None])
+                    else:
+                        pred_xs = pred_xs[1:] + [pred[None, None]] # fifo
             
-            pred = pred.squeeze()
-            target = x[:, -1:].squeeze()
-            assert pred.shape == target.shape, f"pred.shape: {pred.shape}, target.shape: {target.shape}"
-            losses.append(image_loss(pred, target))
+            
 
-        episode_loss = torch.stack([l[0] for l in losses]).mean()
         img_logging = {}
         for k in losses[0][1].keys():
             img_logging[k] = torch.stack([l[1][k] for l in losses]).mean()
         
-        # print("*"*20)
-        # print(f"Step {step}: episode image loss: {episode_loss.item():.44f}")
-        # for k in img_logging.keys():
-        #     print(f"    {k}: {img_logging[k].item():.4f}")
-        # print("*"*20)
-        
-        logger(step, img_loss=episode_loss, global_step=step * cfg.stage1.bs, **img_logging)
+        rec_gt_images = [torch.cat(rec_gt_images[k], dim=1) for k in epi_rec_images_indices]
+        rec_pred_images = [torch.cat(rec_pred_images[k], dim=1) for k in epi_rec_images_indices]
+
+        rec_images = plot_original_recon_rollout(
+            images=torch.cat(rec_gt_images, dim=0), 
+            images_rollout=torch.cat(rec_pred_images, dim=0)
+        )
+
+        rec_images = [wandb.Image(i, caption=f"Sample {i}") for i in rec_images]
+        logger(
+            step, 
+            global_step=step * cfg.stage1.bs, 
+            eval_duration=time.time()-start_time,
+            rec_images=rec_images,
+            **img_logging, 
+        )
 
 
 for step in loop(cfg.stage1.steps + 1, desc="[green bold](stage-1) Training IDM + FDM"):
     train_step()
 
-    if step > 0 and step % cfg.stage1.eval_freq == 0:
+    if step % cfg.stage1.eval_freq == 0:
         test_multistep_prediction()
 
     if step > 0 and (step % 5_000 == 0 or step == cfg.stage1.steps):
