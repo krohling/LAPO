@@ -37,6 +37,7 @@ class VQConfig:
     num_embs: int
     commitment_cost: float
     decay: float
+    warmup_steps: int
 
 @dataclass
 class WMEncDecConfig:

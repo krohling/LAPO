@@ -14,6 +14,7 @@ model:
     num_embs: 64 # each of the vq_latent_dim latents is a categorical variable with vq_num_embs values
     commitment_cost: 0.05
     decay: 0.999
+    warmup_steps: 0
 
 # stage-1 (latent idm & wm training) hyperparameters
 stage1:

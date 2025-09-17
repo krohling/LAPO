@@ -6,10 +6,10 @@ echo "Using dataset: $DATASET"
 
 DATA_PATH_BASE="/scratch/cluster/zzwang_new/flam_data"
 ENV_NAME="flam"
-LEARNING_RATE=3e-4
+LEARNING_RATE=5e-5
 BATCH_SIZE=128
 TRAINING_STEPS=50000
-EVAL_FREQ=500
+EVAL_FREQ=2500
 LPIPS_WEIGHT=1.0
 EVAL_FID=false
 EVAL_FVD=false
@@ -31,6 +31,7 @@ VQ_EMB_DIM=16
 VQ_NUM_EMBS=64
 VQ_COMMITMENT_COST=0.05
 VQ_DECAY=0.999
+VQ_WARMUP_STEPS=0
 
 # =============================================================================
 # ENCODER/DECODER CONFIGURATION
@@ -79,6 +80,12 @@ IDM_ENCODER_IMPALA_Z_CHANNELS=8
 if [ "$DATASET" = "multigrid" ]; then
     EXP_NAME="multigrid"
 
+    # Model
+    LEARNING_RATE=5e-5
+    VQ_COMMITMENT_COST=0.01
+    VQ_DECAY=0.7
+    VQ_WARMUP_STEPS=100
+
     # Data
     DATA_PATH="$DATA_PATH_BASE/multigrid/"
     IMAGE_SIZE=128
@@ -94,8 +101,14 @@ if [ "$DATASET" = "multigrid" ]; then
     IDM_ENCODER_TYPE="impala"
 elif [ "$DATASET" = "procgen" ]; then
     EXP_NAME="procgen"
-    BATCH_SIZE=64
+    BATCH_SIZE=16
     PROCGEN_USE_BACKGROUND=False
+
+    # Model
+    LEARNING_RATE=5e-5
+    VQ_COMMITMENT_COST=0.1
+    VQ_DECAY=0.7
+    VQ_WARMUP_STEPS=100
 
     # Data
     DATA_PATH="$DATA_PATH_BASE/procgen/"
@@ -114,6 +127,11 @@ elif [ "$DATASET" = "sports" ]; then
     EXP_NAME="sports"
     BATCH_SIZE=8
 
+    # Model
+    LEARNING_RATE=5e-5
+    VQ_COMMITMENT_COST=0.15
+    VQ_DECAY=0.7
+
     # Data
     DATA_PATH="$DATA_PATH_BASE/"
     IMAGE_SIZE=224
@@ -130,6 +148,11 @@ elif [ "$DATASET" = "sports" ]; then
 elif [ "$DATASET" = "nuplan" ]; then
     EXP_NAME="nuplan"
     BATCH_SIZE=8
+
+    # Model
+    LEARNING_RATE=5e-5
+    VQ_COMMITMENT_COST=0.15
+    VQ_DECAY=0.7
 
     # Data
     DATA_PATH="$DATA_PATH_BASE/"
@@ -148,6 +171,11 @@ elif [ "$DATASET" = "gr00t" ]; then
     EXP_NAME="gr00t"
     BATCH_SIZE=8
 
+    # Model
+    LEARNING_RATE=5e-5
+    VQ_COMMITMENT_COST=0.15
+    VQ_DECAY=0.7
+
     # Data
     DATA_PATH="$DATA_PATH_BASE/"
     IMAGE_SIZE=224
@@ -164,6 +192,11 @@ elif [ "$DATASET" = "gr00t" ]; then
 elif [ "$DATASET" = "egtea" ]; then
     EXP_NAME="egtea"
     BATCH_SIZE=8
+
+    # Model
+    LEARNING_RATE=5e-5
+    VQ_COMMITMENT_COST=0.15
+    VQ_DECAY=0.7
 
     # Data
     DATA_PATH="$DATA_PATH_BASE/"
@@ -208,6 +241,7 @@ python -u stage1_idm.py \
     model.vq.num_embs=$VQ_NUM_EMBS \
     model.vq.commitment_cost=$VQ_COMMITMENT_COST \
     model.vq.decay=$VQ_DECAY \
+    model.vq.warmup_steps=$VQ_WARMUP_STEPS \
     model.idm_encoder.encoder_type="$IDM_ENCODER_TYPE" \
     model.idm_encoder.encoder_all.magvit2.ch=$IDM_ENCODER_MAGVIT2_CH \
     model.idm_encoder.encoder_all.magvit2.num_res_blocks=$IDM_ENCODER_MAGVIT2_NUM_RES_BLOCKS \

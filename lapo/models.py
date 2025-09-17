@@ -11,6 +11,9 @@ from torch.distributions import Categorical
 
 from config import IDMEncoderConfig, WMEncDecConfig
 
+from einops import rearrange
+
+from flam.utils.misc import compute_entropy_perplexity
 from flam.models.modules.encoder import encoder_library
 from flam.models.modules.decoder import decoder_library
 
@@ -185,6 +188,19 @@ class EncDecWorldModel(nn.Module):
         wm_targ = batch["obs"][:, -1]
         la = batch["la_q"]  # TODO: also allow using la(noq)
         batch["wm_pred"] = self(wm_in_seq, la)
+
+        # from utils import save_seq_targ_pred_grids_labeled
+        # save_seq_targ_pred_grids_labeled(
+        #     wm_in_seq=wm_in_seq.detach(),           # (B, T, C, H, W)
+        #     wm_targ=wm_targ.detach(),               # (B, C, H, W) or (B, T, C, H, W)
+        #     wm_pred=batch["wm_pred"].detach().clamp(0, 1),      # (B, C, H, W) or (B, T, C, H, W)
+        #     out_dir="debug_vis",
+        #     prefix="step_{:07d}".format(getattr(self, "global_step", 0)),
+        #     num_samples=4,
+        #     repeat_target=False,
+        #     repeat_pred_if_single=False
+        # )
+
         return F.mse_loss(batch["wm_pred"], wm_targ)
 
 
@@ -302,12 +318,13 @@ class VQEmbeddingEMA(nn.Module):
         super(VQEmbeddingEMA, self).__init__()
         self.epsilon = epsilon
         self.cfg = cfg
+        self.batch_count = 0
 
         embedding = torch.zeros(cfg.num_codebooks, cfg.num_embs, cfg.emb_dim)
         embedding.uniform_(-1 / cfg.num_embs * 5, 1 / cfg.num_embs * 5)
 
         self.register_buffer("embedding", embedding)
-        self.register_buffer("ema_count", torch.zeros(cfg.num_codebooks, cfg.num_embs))
+        self.register_buffer("ema_count", torch.ones(cfg.num_codebooks, cfg.num_embs))
         self.register_buffer("ema_weight", self.embedding.clone())
 
     def forward_2d(self, x):
@@ -335,35 +352,53 @@ class VQEmbeddingEMA(nn.Module):
         quantized = quantized.view_as(x)
 
         if self.training:
-            self.ema_count = self.cfg.decay * self.ema_count + (
-                1 - self.cfg.decay
-            ) * torch.sum(encodings, dim=1)
+            self.batch_count += 1
+            if self.batch_count < self.cfg.warmup_steps:
+                dw = torch.bmm(encodings.transpose(1, 2), x_flat) 
+                count = torch.sum(encodings, dim=1).unsqueeze(-1) 
+                used = count.squeeze(-1) > 0 
+                new_embedding = self.embedding.clone()
+                new_embedding[used] = (dw / (count + self.epsilon))[used]
+                self.embedding = new_embedding
+            else:
+                self.ema_count = self.cfg.decay * self.ema_count + (
+                    1 - self.cfg.decay
+                ) * torch.sum(encodings, dim=1)
 
-            n = torch.sum(self.ema_count, dim=-1, keepdim=True)
-            self.ema_count = (
-                (self.ema_count + self.epsilon) / (n + M * self.epsilon) * n
-            )
-            dw = torch.bmm(encodings.transpose(1, 2), x_flat)
-            self.ema_weight = (
-                self.cfg.decay * self.ema_weight + (1 - self.cfg.decay) * dw
-            )
+                # n = torch.sum(self.ema_count, dim=-1, keepdim=True)
+                # self.ema_count = (
+                #     (self.ema_count + self.epsilon) / (n + M * self.epsilon) * n
+                # )
+                dw = torch.bmm(encodings.transpose(1, 2), x_flat)
+                self.ema_weight = (
+                    self.cfg.decay * self.ema_weight + (1 - self.cfg.decay) * dw
+                )
 
-            self.embedding = self.ema_weight / self.ema_count.unsqueeze(-1)
+                self.embedding = self.ema_weight / self.ema_count.unsqueeze(-1)
 
         e_latent_loss = F.mse_loss(x, quantized.detach())
         loss = self.cfg.commitment_cost * e_latent_loss
 
+        entropy, perplexity = compute_entropy_perplexity(
+            rearrange(indices, "c b -> b c"),
+            self.cfg.num_embs,
+        )
+        # print(f"entropy: {entropy}, perplexity: {perplexity}")
+        # print("Codebook weights:", self.embedding)
+        # print("Codebook counts:", self.ema_count)
+
         quantized = quantized.detach() + (x - x.detach())
 
-        avg_probs = torch.mean(encodings, dim=1)
-        perplexity = torch.exp(
-            -torch.sum(avg_probs * torch.log(avg_probs + 1e-10), dim=-1)
-        )
+        # avg_probs = torch.mean(encodings, dim=1)
+        # perplexity = torch.exp(
+        #     -torch.sum(avg_probs * torch.log(avg_probs + 1e-10), dim=-1)
+        # )
 
         return (
             quantized.permute(1, 0, 4, 2, 3).reshape(B, C, H, W),
             loss,
-            perplexity.sum(),
+            entropy,
+            perplexity,
             indices.view(N, B, H, W).permute(1, 0, 2, 3),
         )
 
@@ -376,7 +411,7 @@ class VQEmbeddingEMA(nn.Module):
             1,
         )
 
-        z_q, loss, perplexity, indices = self.forward_2d(x)
+        z_q, loss, entropy, perplexity, indices = self.forward_2d(x)
 
         return (
             z_q.view(
@@ -386,6 +421,7 @@ class VQEmbeddingEMA(nn.Module):
                 * self.cfg.emb_dim,
             ),
             loss,
+            entropy,
             perplexity,
             indices,
         )
@@ -457,7 +493,8 @@ class IDM(nn.Module):
             x = x.reshape((x.shape[0], np.prod(x.shape[1:])))  # -> (B, H_feat*W_feat*D)
             la = self.policy_head(F.relu(x))            # -> (B, action_dim)
 
-        la_q, vq_loss, vq_perp, la_qinds = self.vq(la)
+        # print("Encoder output mean:", la.mean().item(), "std:", la.std().item())
+        la_q, vq_loss, vq_entr, vq_perp, la_qinds = self.vq(la)
 
         action_dict = TensorDict(
             dict(
@@ -468,12 +505,19 @@ class IDM(nn.Module):
             batch_size=len(la),
         )
 
-        return action_dict, vq_loss, vq_perp
+        stats = {
+            "idm/vq_entropy": vq_entr,
+            "idm/vq_perplexity": vq_perp,
+            "idm/la_mean": la.mean(),
+            "idm/la_std": la.std(),
+        }
+
+        return action_dict, vq_loss, stats
 
     def label(self, batch: TensorDict) -> tuple[torch.Tensor, torch.Tensor]:
-        action_td, vq_loss, vq_perp = self(batch["obs"])
+        action_td, vq_loss, stats = self(batch["obs"])
         batch.update(action_td)
-        return vq_loss, vq_perp
+        return vq_loss, stats
 
     @torch.no_grad()
     def label_chunked(
