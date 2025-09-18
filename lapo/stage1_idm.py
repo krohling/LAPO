@@ -92,12 +92,13 @@ def test_step(eval_steps=10):
     logger(step, wm_loss_test=wm_loss, global_step=step * cfg.stage1.bs, **eval_metrics)
 
 
-def test_multistep_prediction(n_steps: int=10, n_rec_episodes: int=3):
+def test_multistep_prediction(n_steps: int=10, n_rec_episodes: int=10):
     start_time = time.time()
     idm.eval()  # disables idm.vq ema update
     wm.eval()
 
-    episodes = random.sample(test_data.dataset.get_all_episodes(), k=5)
+    # episodes = random.sample(test_data.dataset.get_all_episodes(), k=5)
+    episodes = test_data.dataset.get_all_episodes()
     epi_rec_images_indices = random.sample(range(len(episodes)), k=n_rec_episodes)
     rec_gt_images = {k: [] for k in epi_rec_images_indices}
     rec_pred_images = {k: [] for k in epi_rec_images_indices}
