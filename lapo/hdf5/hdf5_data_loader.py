@@ -98,10 +98,16 @@ def load(
         **kwargs
     ) -> tuple[HDF5DataStager, HDF5DataStager]:
     
-    dl_train = HDF5DataStager(
+    ds_train = HDF5DataStager(
         **kwargs,
         data_path=path,
         split="train",
+    )
+
+    ds_valid = HDF5DataStager(
+        **kwargs,
+        data_path=path,
+        split="valid",
     )
 
     ds_test = HDF5DataStager(
@@ -110,5 +116,5 @@ def load(
         split="test",
     )
 
-    return dl_train, ds_test
+    return ds_train, ds_valid, ds_test
 

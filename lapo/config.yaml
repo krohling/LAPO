@@ -22,6 +22,9 @@ stage1:
   bs: 128
   steps: 50_000
   eval_freq: 500
+  n_eval_steps: 10
+  n_valid_eval_sample_images: 10
+  n_test_eval_sample_images: 10
 
 # stage-2 (latent behavior cloning) hyperparameters
 stage2:

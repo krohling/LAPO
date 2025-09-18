@@ -11,6 +11,7 @@ from doy import loop
 
 from flam.utils.plot.plot_comparison import plot_original_recon_rollout
 from flam.loss.image import ImageLoss
+from hdf5.hdf5_dataset import Hdf5Dataset
 import hdf5.hdf5_data_loader as data_loader
 
 cfg = config.get()
@@ -30,13 +31,12 @@ idm, wm = utils.create_dynamics_models(
 
 
 image_loss = ImageLoss(cfg.stage1.image_loss).to(config.DEVICE)
-train_data, test_data = data_loader.load(
+train_data, valid_data, test_data = data_loader.load(
     **cfg.data,
     image_size=cfg.image_size,
     sub_traj_len=cfg.sub_traj_len,
 )
 train_iter = train_data.get_iter(cfg.stage1.bs)
-# test_iter = test_data.get_iter(cfg.stage1.bs)
 
 opt, lr_sched = doy.LRScheduler.make(
     all=(
@@ -92,14 +92,13 @@ def test_step(eval_steps=10):
     logger(step, wm_loss_test=wm_loss, global_step=step * cfg.stage1.bs, **eval_metrics)
 
 
-def test_multistep_prediction(n_steps: int=10, n_rec_episodes: int=10):
-    start_time = time.time()
+def test_multistep_prediction(dataset: Hdf5Dataset, n_steps: int=10, n_rec_episodes: int=10):
     idm.eval()  # disables idm.vq ema update
     wm.eval()
 
     # episodes = random.sample(test_data.dataset.get_all_episodes(), k=5)
-    episodes = test_data.dataset.get_all_episodes()
-    epi_rec_images_indices = random.sample(range(len(episodes)), k=n_rec_episodes)
+    episodes = dataset.get_all_episodes()
+    epi_rec_images_indices = random.sample(range(len(episodes)), k=min(n_rec_episodes, len(episodes)))
     rec_gt_images = {k: [] for k in epi_rec_images_indices}
     rec_pred_images = {k: [] for k in epi_rec_images_indices}
 
@@ -165,7 +164,7 @@ def test_multistep_prediction(n_steps: int=10, n_rec_episodes: int=10):
                     # )
                     # counter += 1
 
-                    if t == rec_t and epi_idx in rec_gt_images:
+                    if t == rec_t and epi_idx in epi_rec_images_indices:
                         if i == 0:
                             rec_gt_images[epi_idx].append(epi_steps['image'][target_idx-1][None, None].to(config.DEVICE))  # (1, 1, C, H, W)
 
@@ -184,38 +183,81 @@ def test_multistep_prediction(n_steps: int=10, n_rec_episodes: int=10):
         for k in losses[0][1].keys():
             img_logging[k] = torch.stack([l[1][k] for l in losses]).mean()
         
-        rec_gt_images = [torch.cat(rec_gt_images[k], dim=1) for k in epi_rec_images_indices]
-        rec_pred_images = [torch.cat(rec_pred_images[k], dim=1) for k in epi_rec_images_indices]
+        if len(epi_rec_images_indices) > 0:
+            rec_gt_images = [torch.cat(rec_gt_images[k], dim=1) for k in epi_rec_images_indices]
+            rec_pred_images = [torch.cat(rec_pred_images[k], dim=1) for k in epi_rec_images_indices]
 
-        rec_images = plot_original_recon_rollout(
-            images=torch.cat(rec_gt_images, dim=0), 
-            images_rollout=torch.cat(rec_pred_images, dim=0)
-        )
+            rec_images = plot_original_recon_rollout(
+                images=torch.cat(rec_gt_images, dim=0), 
+                images_rollout=torch.cat(rec_pred_images, dim=0)
+            )
 
-        rec_images = [wandb.Image(i, caption=f"Sample {i}") for i in rec_images]
-        logger(
-            step, 
-            global_step=step * cfg.stage1.bs, 
-            eval_duration=time.time()-start_time,
-            rec_images=rec_images,
-            **img_logging, 
-        )
+            rec_images = [wandb.Image(i, caption=f"Sample {i}") for i in rec_images]
+            
+
+            return img_logging, rec_images
+        
+        return img_logging, None
 
 
 for step in loop(cfg.stage1.steps + 1, desc="[green bold](stage-1) Training IDM + FDM"):
+    best_loss = float('inf')
     train_step()
 
-    if step > 0 and step % cfg.stage1.eval_freq == 0:
-        print("[bold green]Evaluating IDM + FDM...")
-        test_multistep_prediction()
-
-    if step > 0 and (step % 5_000 == 0 or step == cfg.stage1.steps):
-        torch.save(
-            dict(
-                **doy.get_state_dicts(wm=wm, idm=idm, opt=opt),
-                step=step,
-                cfg=cfg,
-                logger=logger,
-            ),
-            paths.get_models_path(cfg.exp_name),
+    if step % cfg.stage1.eval_freq == 0:
+        print("[bold green]Evaluating IDM + FDM on validation set...")
+        start_time = time.time()
+        val_losses, valid_image_samples = test_multistep_prediction(
+            valid_data.dataset, 
+            n_steps=cfg.stage1.n_eval_steps, 
+            n_rec_episodes=cfg.stage1.n_valid_eval_sample_images
         )
+        val_losses = {f"valid_{k}": v for k, v in val_losses.items()}
+        logger(
+            step, 
+            global_step=step * cfg.stage1.bs, 
+            valid_eval_duration=time.time()-start_time,
+            valid_image_samples=valid_image_samples,
+            **val_losses, 
+        )
+
+        if val_losses['valid_pixel_mse'] < best_loss:
+            best_loss = val_losses['valid_pixel_mse']
+            torch.save(
+                dict(
+                    **doy.get_state_dicts(wm=wm, idm=idm, opt=opt),
+                    step=step,
+                    cfg=cfg,
+                    logger=logger,
+                ),
+                paths.get_models_path(cfg.exp_name),
+            )
+            print(f"[bold green] New best model saved with pixel_mse: {best_loss:.6f}")
+        else:
+            # load best model
+            print(f"[bold yellow] Validation pixel_mse did not improve from {best_loss:.6f}, loading best model")
+            checkpoint = torch.load(paths.get_models_path(cfg.exp_name), map_location=config.DEVICE)
+            idm.load_state_dict(checkpoint['idm'])
+            wm.load_state_dict(checkpoint['wm'])
+            opt.load_state_dict(checkpoint['opt'])
+        
+        print("[bold green]Evaluating IDM + FDM on test set...")
+        start_time = time.time()
+        test_losses, test_image_samples = test_multistep_prediction(
+            test_data.dataset, 
+            n_steps=cfg.stage1.n_eval_steps, 
+            n_rec_episodes=cfg.stage1.n_test_eval_sample_images
+        )
+        test_losses = {f"test_{k}": v for k, v in test_losses.items()}
+        logger(
+            step, 
+            global_step=step * cfg.stage1.bs, 
+            test_eval_duration=time.time()-start_time,
+            test_image_samples=test_image_samples,
+            **test_losses, 
+        )
+        
+
+
+
+    

@@ -15,6 +15,10 @@ EVAL_FID=false
 EVAL_FVD=false
 NUM_WORKERS=4
 PREFETCH_FACTOR=2
+SUB_TRAJ_LEN=2
+N_EVAL_STEPS=10
+N_VALID_EVAL_SAMPLE_IMAGES=10
+N_TEST_EVAL_SAMPLE_IMAGES=10
 
 
 # =============================================================================
@@ -89,11 +93,11 @@ if [ "$DATASET" = "multigrid" ]; then
     # Data
     DATA_PATH="$DATA_PATH_BASE/multigrid/"
     IMAGE_SIZE=128
-    SUB_TRAJ_LEN=2
     FRAME_SKIP=1
     ITERATE_FRAME_BETWEEN_SKIP=true
     TRAIN_DATASET_ID="empty-agent_4-v0/data/main_data.hdf5"     # v0: train (1M), v1: valid (10k), v2: test (100k)
-    TEST_DATASET_ID="empty-agent_4-v1/data/main_data.hdf5"
+    VALID_DATASET_ID="empty-agent_4-v1/data/main_data.hdf5"
+    TEST_DATASET_ID="empty-agent_4-v2/data/main_data.hdf5"
 
     # Encoder/Decoder settings
     WM_ENCODER_TYPE="impala"
@@ -113,11 +117,11 @@ elif [ "$DATASET" = "procgen" ]; then
     # Data
     DATA_PATH="$DATA_PATH_BASE/procgen/"
     IMAGE_SIZE=224
-    SUB_TRAJ_LEN=2
     FRAME_SKIP=1
     ITERATE_FRAME_BETWEEN_SKIP=true
     TRAIN_DATASET_ID="\\*background_${PROCGEN_USE_BACKGROUND}-v0/data/main_data.hdf5"
-    TEST_DATASET_ID="\\*background_${PROCGEN_USE_BACKGROUND}-v1/data/main_data.hdf5"
+    VALID_DATASET_ID="\\*background_${PROCGEN_USE_BACKGROUND}-v1/data/main_data.hdf5"
+    TEST_DATASET_ID="\\*background_${PROCGEN_USE_BACKGROUND}-v2/data/main_data.hdf5"
 
     # Encoder/Decoder settings
     WM_ENCODER_TYPE="impala"
@@ -135,10 +139,10 @@ elif [ "$DATASET" = "sports" ]; then
     # Data
     DATA_PATH="$DATA_PATH_BASE/"
     IMAGE_SIZE=224
-    SUB_TRAJ_LEN=2
     FRAME_SKIP=3
     ITERATE_FRAME_BETWEEN_SKIP=true
     TRAIN_DATASET_ID="basketball/train.hdf5,sports_mot/train.hdf5,tennis_play_video_generation/train.hdf5,tenniset/train.hdf5,volleyball/train.hdf5"
+    VALID_DATASET_ID="basketball/valid.hdf5,sports_mot/valid.hdf5,tennis_play_video_generation/valid.hdf5,tenniset/valid.hdf5,volleyball/valid.hdf5"
     TEST_DATASET_ID="basketball/test.hdf5,sports_mot/test.hdf5,tennis_play_video_generation/test.hdf5,tenniset/test.hdf5,volleyball/test.hdf5"
 
     # Encoder/Decoder settings
@@ -157,10 +161,10 @@ elif [ "$DATASET" = "nuplan" ]; then
     # Data
     DATA_PATH="$DATA_PATH_BASE/"
     IMAGE_SIZE=224
-    SUB_TRAJ_LEN=2
     FRAME_SKIP=2
     ITERATE_FRAME_BETWEEN_SKIP=true
     TRAIN_DATASET_ID="nuplan_mini/train_CAM_F0.hdf5,nuplan_val/train_CAM_F0.hdf5"
+    VALID_DATASET_ID="nuplan_mini/valid_CAM_F0.hdf5,nuplan_val/valid_CAM_F0.hdf5"
     TEST_DATASET_ID="nuplan_mini/test_CAM_F0.hdf5,nuplan_val/test_CAM_F0.hdf5"
 
     # Encoder/Decoder settings
@@ -179,10 +183,10 @@ elif [ "$DATASET" = "gr00t" ]; then
     # Data
     DATA_PATH="$DATA_PATH_BASE/"
     IMAGE_SIZE=224
-    SUB_TRAJ_LEN=2
     FRAME_SKIP=2
     ITERATE_FRAME_BETWEEN_SKIP=true
     TRAIN_DATASET_ID="gr00t/train.hdf5"
+    VALID_DATASET_ID="gr00t/valid.hdf5"
     TEST_DATASET_ID="gr00t/test.hdf5"
 
     # Encoder/Decoder settings
@@ -201,10 +205,10 @@ elif [ "$DATASET" = "egtea" ]; then
     # Data
     DATA_PATH="$DATA_PATH_BASE/"
     IMAGE_SIZE=224
-    SUB_TRAJ_LEN=2
     FRAME_SKIP=1
     ITERATE_FRAME_BETWEEN_SKIP=true
     TRAIN_DATASET_ID="egtea/train.hdf5"
+    VALID_DATASET_ID="egtea/valid.hdf5"
     TEST_DATASET_ID="egtea/test.hdf5"
 
     # Encoder/Decoder settings
@@ -227,6 +231,7 @@ python -u stage1_idm.py \
     sub_traj_len=$SUB_TRAJ_LEN \
     data.path="$DATA_PATH" \
     data.train_fname="$TRAIN_DATASET_ID" \
+    data.valid_fname="$VALID_DATASET_ID" \
     data.test_fname="$TEST_DATASET_ID" \
     data.frame_skip=$FRAME_SKIP \
     data.iterate_frame_between_skip=$ITERATE_FRAME_BETWEEN_SKIP \
@@ -272,6 +277,9 @@ python -u stage1_idm.py \
     stage1.bs=$BATCH_SIZE \
     stage1.steps=$TRAINING_STEPS \
     stage1.eval_freq=$EVAL_FREQ \
+    stage1.n_eval_steps=$N_EVAL_STEPS \
+    stage1.n_valid_eval_sample_images=$N_VALID_EVAL_SAMPLE_IMAGES \
+    stage1.n_test_eval_sample_images=$N_TEST_EVAL_SAMPLE_IMAGES \
     stage1.image_loss.lpips_weight=$LPIPS_WEIGHT \
     stage1.image_loss.eval_fid=$EVAL_FID \
     stage1.image_loss.eval_fvd=$EVAL_FVD

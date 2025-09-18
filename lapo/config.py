@@ -66,6 +66,7 @@ class ModelConfig:
 class DataConfig:
     path: str
     train_fname: str = "train.hdf5"
+    valid_fname: str = "valid.hdf5"
     test_fname: str = "test.hdf5"
     frame_skip: int = 4
     iterate_frame_between_skip: bool | None = True
@@ -81,6 +82,9 @@ class Stage1Config:
     bs: int
     steps: int
     eval_freq: int
+    n_eval_steps: int
+    n_valid_eval_sample_images: int
+    n_test_eval_sample_images: int
     image_loss: ImageLossConfig = field(default_factory=ImageLossConfig)
 
 
