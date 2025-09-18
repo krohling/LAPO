@@ -508,8 +508,8 @@ class IDM(nn.Module):
         stats = {
             "idm/vq_entropy": vq_entr,
             "idm/vq_perplexity": vq_perp,
-            "idm/la_mean": la.mean(),
-            "idm/la_std": la.std(),
+            "idm/encoder_mean": la.mean(),
+            "idm/encoder_std": la.std(),
         }
 
         return action_dict, vq_loss, stats

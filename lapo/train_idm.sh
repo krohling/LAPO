@@ -18,7 +18,7 @@ PREFETCH_FACTOR=2
 SUB_TRAJ_LEN=2
 N_EVAL_STEPS=10
 N_VALID_EVAL_SAMPLE_IMAGES=10
-N_TEST_EVAL_SAMPLE_IMAGES=10
+N_TEST_EVAL_SAMPLE_IMAGES=25
 
 
 # =============================================================================

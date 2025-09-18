@@ -96,8 +96,8 @@ def test_multistep_prediction(dataset: Hdf5Dataset, n_steps: int=10, n_rec_episo
     idm.eval()  # disables idm.vq ema update
     wm.eval()
 
-    # episodes = random.sample(test_data.dataset.get_all_episodes(), k=5)
     episodes = dataset.get_all_episodes()
+    # episodes = random.sample(episodes, k=5)
     epi_rec_images_indices = random.sample(range(len(episodes)), k=min(n_rec_episodes, len(episodes)))
     rec_gt_images = {k: [] for k in epi_rec_images_indices}
     rec_pred_images = {k: [] for k in epi_rec_images_indices}
@@ -200,11 +200,22 @@ def test_multistep_prediction(dataset: Hdf5Dataset, n_steps: int=10, n_rec_episo
         return img_logging, None
 
 
+best_loss = float('inf')
+best_checkpoint_path = None
 for step in loop(cfg.stage1.steps + 1, desc="[green bold](stage-1) Training IDM + FDM"):
-    best_loss = float('inf')
     train_step()
 
-    if step % cfg.stage1.eval_freq == 0:
+    if step > 0 and step % cfg.stage1.eval_freq == 0:
+        current_checkpoint_path = paths.get_experiment_dir(cfg.exp_name) / f"checkpoint_{step:07d}.pt"
+        torch.save(
+            dict(
+                **doy.get_state_dicts(wm=wm, idm=idm, opt=opt),
+                step=step,
+                cfg=cfg,
+            ),
+            current_checkpoint_path,
+        )
+
         print("[bold green]Evaluating IDM + FDM on validation set...")
         start_time = time.time()
         val_losses, valid_image_samples = test_multistep_prediction(
@@ -223,41 +234,32 @@ for step in loop(cfg.stage1.steps + 1, desc="[green bold](stage-1) Training IDM 
 
         if val_losses['valid_pixel_mse'] < best_loss:
             best_loss = val_losses['valid_pixel_mse']
-            torch.save(
-                dict(
-                    **doy.get_state_dicts(wm=wm, idm=idm, opt=opt),
-                    step=step,
-                    cfg=cfg,
-                    logger=logger,
-                ),
-                paths.get_models_path(cfg.exp_name),
-            )
-            print(f"[bold green] New best model saved with pixel_mse: {best_loss:.6f}")
-        else:
-            # load best model
-            print(f"[bold yellow] Validation pixel_mse did not improve from {best_loss:.6f}, loading best model")
-            checkpoint = torch.load(paths.get_models_path(cfg.exp_name), map_location=config.DEVICE)
-            idm.load_state_dict(checkpoint['idm'])
-            wm.load_state_dict(checkpoint['wm'])
-            opt.load_state_dict(checkpoint['opt'])
-        
-        print("[bold green]Evaluating IDM + FDM on test set...")
-        start_time = time.time()
-        test_losses, test_image_samples = test_multistep_prediction(
-            test_data.dataset, 
-            n_steps=cfg.stage1.n_eval_steps, 
-            n_rec_episodes=cfg.stage1.n_test_eval_sample_images
-        )
-        test_losses = {f"test_{k}": v for k, v in test_losses.items()}
-        logger(
-            step, 
-            global_step=step * cfg.stage1.bs, 
-            test_eval_duration=time.time()-start_time,
-            test_image_samples=test_image_samples,
-            **test_losses, 
-        )
-        
+            best_checkpoint_path = current_checkpoint_path
+            print(f"[bold yellow] New best model with validation loss={best_loss:.6f} saved to {best_checkpoint_path}.")
 
 
+print(f"[bold yellow] Loading best checkpoint with validation loss={best_loss:.6f}, from {best_checkpoint_path} ...")
+checkpoint = torch.load(best_checkpoint_path, map_location=config.DEVICE, weights_only=False)
+idm.load_state_dict(checkpoint['idm'])
+wm.load_state_dict(checkpoint['wm'])
+opt.load_state_dict(checkpoint['opt'])
 
-    
+print("[bold green]Evaluating best checkpoint on test set...")
+start_time = time.time()
+test_losses, test_image_samples = test_multistep_prediction(
+    test_data.dataset, 
+    n_steps=cfg.stage1.n_eval_steps, 
+    n_rec_episodes=cfg.stage1.n_test_eval_sample_images
+)
+test_losses = {f"test_{k}": v for k, v in test_losses.items()}
+logger(
+    step, 
+    global_step=step * cfg.stage1.bs, 
+    test_eval_duration=time.time()-start_time,
+    test_image_samples=test_image_samples,
+    **test_losses, 
+)
+
+print(test_losses)
+
+print("[bold green]Finished LAPO stage 1 (IDM/FDM training).")
