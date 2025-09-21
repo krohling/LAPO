@@ -81,7 +81,10 @@ class Stage1Config:
     lr: float
     bs: int
     steps: int
+    load_checkpoint: str | None
     eval_freq: int
+    eval_skip_steps: int
+    valid_dataset_percentage: float
     n_eval_steps: int
     n_valid_eval_sample_images: int
     n_test_eval_sample_images: int

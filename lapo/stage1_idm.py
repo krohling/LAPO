@@ -48,6 +48,14 @@ opt, lr_sched = doy.LRScheduler.make(
     ),
 )
 
+if cfg.stage1.load_checkpoint is not None and cfg.stage1.load_checkpoint != "":
+    print(f"[bold yellow] Loading checkpoint from {cfg.stage1.load_checkpoint} ...")
+    checkpoint = torch.load(cfg.stage1.load_checkpoint, map_location=config.DEVICE, weights_only=False)
+    idm.load_state_dict(checkpoint['idm'])
+    wm.load_state_dict(checkpoint['wm'])
+    opt.load_state_dict(checkpoint['opt'])
+    print(f"[bold yellow] Loaded checkpoint from {cfg.stage1.load_checkpoint}.")
+
 
 def train_step():
     idm.train()
@@ -92,11 +100,18 @@ def test_step(eval_steps=10):
     logger(step, wm_loss_test=wm_loss, global_step=step * cfg.stage1.bs, **eval_metrics)
 
 
-def test_multistep_prediction(dataset: Hdf5Dataset, n_steps: int=10, n_rec_episodes: int=10):
+def test_multistep_prediction(dataset: Hdf5Dataset, n_steps: int=10, n_rec_episodes: int=5, use_ds_percentage: float=1.0):
     idm.eval()  # disables idm.vq ema update
     wm.eval()
 
+
     episodes = dataset.get_all_episodes()
+    if use_ds_percentage < 1.0:
+        total_episodes = len(episodes)
+        n_episodes = int(total_episodes * use_ds_percentage)
+        episodes = random.sample(episodes, k=n_episodes)
+        print(f"Using {n_episodes} episodes ({use_ds_percentage*100:.1f}%) for evaluation, out of {total_episodes} total episodes.")
+
     # episodes = random.sample(episodes, k=5)
     epi_rec_images_indices = random.sample(range(len(episodes)), k=min(n_rec_episodes, len(episodes)))
     rec_gt_images = {k: [] for k in epi_rec_images_indices}
@@ -148,7 +163,7 @@ def test_multistep_prediction(dataset: Hdf5Dataset, n_steps: int=10, n_rec_episo
                     target_idx = idx+T-1
                     target = epi_steps['image'][target_idx].to(config.DEVICE)
                     assert pred.shape == target.shape, f"pred.shape: {pred.shape}, target.shape: {target.shape}"
-                    losses.append(image_loss(pred, target))
+                    losses.append(image_loss(pred.detach(), target.detach()))
 
                     # from utils import save_seq_targ_pred_grids_labeled
                     # # print(f"x.shape: {x.shape}, target.shape: {target.shape}, pred.shape: {pred.shape}")
@@ -166,16 +181,18 @@ def test_multistep_prediction(dataset: Hdf5Dataset, n_steps: int=10, n_rec_episo
 
                     if t == rec_t and epi_idx in epi_rec_images_indices:
                         if i == 0:
-                            rec_gt_images[epi_idx].append(epi_steps['image'][target_idx-1][None, None].to(config.DEVICE))  # (1, 1, C, H, W)
+                            rec_gt_images[epi_idx].append(epi_steps['image'][target_idx-1][None, None].detach().cpu())  # (1, 1, C, H, W)
 
-                        rec_gt_images[epi_idx].append(target[None, None].to(config.DEVICE))  # (1, 1, C, H, W)
-                        rec_pred_images[epi_idx].append(pred[None, None].to(config.DEVICE))  # (1, 1, C, H, W)
+                        rec_gt_images[epi_idx].append(target[None, None].detach().cpu())  # (1, 1, C, H, W)
+                        rec_pred_images[epi_idx].append(pred[None, None].detach().cpu())  # (1, 1, C, H, W)
 
                     # append predicted image
                     if len(pred_xs) < T-1:
                         pred_xs.append(pred[None, None])
                     else:
                         pred_xs = pred_xs[1:] + [pred[None, None]] # fifo
+                    
+                    torch.cuda.empty_cache()
             
             
 
@@ -184,8 +201,8 @@ def test_multistep_prediction(dataset: Hdf5Dataset, n_steps: int=10, n_rec_episo
             img_logging[k] = torch.stack([l[1][k] for l in losses]).mean()
         
         if len(epi_rec_images_indices) > 0:
-            rec_gt_images = [torch.cat(rec_gt_images[k], dim=1) for k in epi_rec_images_indices]
-            rec_pred_images = [torch.cat(rec_pred_images[k], dim=1) for k in epi_rec_images_indices]
+            rec_gt_images = [torch.cat(rec_gt_images[k], dim=1) for k in epi_rec_images_indices if len(rec_gt_images[k]) > 0]
+            rec_pred_images = [torch.cat(rec_pred_images[k], dim=1) for k in epi_rec_images_indices if len(rec_pred_images[k]) > 0]
 
             rec_images = plot_original_recon_rollout(
                 images=torch.cat(rec_gt_images, dim=0), 
@@ -205,7 +222,7 @@ best_checkpoint_path = None
 for step in loop(cfg.stage1.steps + 1, desc="[green bold](stage-1) Training IDM + FDM"):
     train_step()
 
-    if step > 0 and step % cfg.stage1.eval_freq == 0:
+    if step > cfg.stage1.eval_skip_steps and step % cfg.stage1.eval_freq == 0:
         current_checkpoint_path = paths.get_experiment_dir(cfg.exp_name) / f"checkpoint_{step:07d}.pt"
         torch.save(
             dict(
@@ -221,7 +238,8 @@ for step in loop(cfg.stage1.steps + 1, desc="[green bold](stage-1) Training IDM 
         val_losses, valid_image_samples = test_multistep_prediction(
             valid_data.dataset, 
             n_steps=cfg.stage1.n_eval_steps, 
-            n_rec_episodes=cfg.stage1.n_valid_eval_sample_images
+            n_rec_episodes=cfg.stage1.n_valid_eval_sample_images,
+            use_ds_percentage=cfg.stage1.valid_dataset_percentage,
         )
         val_losses = {f"valid_{k}": v for k, v in val_losses.items()}
         logger(

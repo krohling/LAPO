@@ -22,6 +22,8 @@ stage1:
   bs: 128
   steps: 50_000
   eval_freq: 500
+  eval_skip_steps: 0
+  valid_dataset_percentage: 1.0
   n_eval_steps: 10
   n_valid_eval_sample_images: 10
   n_test_eval_sample_images: 10

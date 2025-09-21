@@ -2,6 +2,7 @@
 # TRAINING CONFIGURATION
 # =============================================================================
 DATASET="${1:-multigrid}"                                   # multigrid, procgen, sports, nuplan, gr00t, egtea
+LOAD_CHECKPOINT="${2:-}"
 echo "Using dataset: $DATASET"
 
 DATA_PATH_BASE="/scratch/cluster/zzwang_new/flam_data"
@@ -10,12 +11,14 @@ LEARNING_RATE=5e-5
 BATCH_SIZE=128
 TRAINING_STEPS=50000
 EVAL_FREQ=2500
+EVAL_SKIP_STEPS=0
 LPIPS_WEIGHT=1.0
 EVAL_FID=false
 EVAL_FVD=false
 NUM_WORKERS=4
 PREFETCH_FACTOR=2
 SUB_TRAJ_LEN=2
+VALIDATION_DATASET_PERCENTAGE=1.0
 N_EVAL_STEPS=10
 N_VALID_EVAL_SAMPLE_IMAGES=10
 N_TEST_EVAL_SAMPLE_IMAGES=25
@@ -83,9 +86,9 @@ IDM_ENCODER_IMPALA_Z_CHANNELS=8
 
 if [ "$DATASET" = "multigrid" ]; then
     EXP_NAME="multigrid"
+    TRAINING_STEPS=50000
 
     # Model
-    LEARNING_RATE=5e-5
     VQ_COMMITMENT_COST=0.01
     VQ_DECAY=0.7
     VQ_WARMUP_STEPS=100
@@ -105,8 +108,10 @@ if [ "$DATASET" = "multigrid" ]; then
     IDM_ENCODER_TYPE="impala"
 elif [ "$DATASET" = "procgen" ]; then
     EXP_NAME="procgen"
-    BATCH_SIZE=16
+    BATCH_SIZE=32
     PROCGEN_USE_BACKGROUND=False
+    TRAINING_STEPS=100000
+    EVAL_FREQ=5000
 
     # Model
     LEARNING_RATE=5e-5
@@ -129,10 +134,14 @@ elif [ "$DATASET" = "procgen" ]; then
     IDM_ENCODER_TYPE="impala"
 elif [ "$DATASET" = "sports" ]; then
     EXP_NAME="sports"
+    LEARNING_RATE=5e-5
     BATCH_SIZE=8
+    TRAINING_STEPS=50000
+    EVAL_FREQ=5000
+    VALIDATION_DATASET_PERCENTAGE=0.12
+    EVAL_SKIP_STEPS=15001
 
     # Model
-    LEARNING_RATE=5e-5
     VQ_COMMITMENT_COST=0.15
     VQ_DECAY=0.7
 
@@ -151,10 +160,14 @@ elif [ "$DATASET" = "sports" ]; then
     IDM_ENCODER_TYPE="magvit2"
 elif [ "$DATASET" = "nuplan" ]; then
     EXP_NAME="nuplan"
+    LEARNING_RATE=5e-5
     BATCH_SIZE=8
+    TRAINING_STEPS=50000
+    EVAL_FREQ=5000
+    VALIDATION_DATASET_PERCENTAGE=0.15
+    EVAL_SKIP_STEPS=10001
 
     # Model
-    LEARNING_RATE=5e-5
     VQ_COMMITMENT_COST=0.15
     VQ_DECAY=0.7
 
@@ -196,6 +209,10 @@ elif [ "$DATASET" = "gr00t" ]; then
 elif [ "$DATASET" = "egtea" ]; then
     EXP_NAME="egtea"
     BATCH_SIZE=8
+    TRAINING_STEPS=50000
+    EVAL_FREQ=5000
+    VALIDATION_DATASET_PERCENTAGE=0.05
+    EVAL_SKIP_STEPS=15001
 
     # Model
     LEARNING_RATE=5e-5
@@ -276,7 +293,10 @@ python -u stage1_idm.py \
     stage1.lr=$LEARNING_RATE \
     stage1.bs=$BATCH_SIZE \
     stage1.steps=$TRAINING_STEPS \
+    stage1.load_checkpoint="$LOAD_CHECKPOINT" \
     stage1.eval_freq=$EVAL_FREQ \
+    stage1.eval_skip_steps=$EVAL_SKIP_STEPS \
+    stage1.valid_dataset_percentage=$VALIDATION_DATASET_PERCENTAGE \
     stage1.n_eval_steps=$N_EVAL_STEPS \
     stage1.n_valid_eval_sample_images=$N_VALID_EVAL_SAMPLE_IMAGES \
     stage1.n_test_eval_sample_images=$N_TEST_EVAL_SAMPLE_IMAGES \

@@ -22,17 +22,17 @@ class ImageLoss(nn.Module):
 
         image_loss = mse
         image_logging = {
-            "pixel_l1": l1_loss,
-            "pixel_mse": mse,
-            "psnr": -10 * torch.log10(mse),     # MAX is 1.0 so we ignore it
+            "pixel_l1": l1_loss.detach().cpu(),
+            "pixel_mse": mse.detach().cpu(),
+            "psnr": -10 * torch.log10(mse).detach().cpu(),     # MAX is 1.0 so we ignore it
         }
 
         if self.lpips_weight > 0:
             self.lpips_loss.eval()
             lpips_loss = self.lpips_loss(pred, target).mean()
             image_loss = image_loss + self.lpips_weight * lpips_loss
-            image_logging["lpips_loss"] = lpips_loss
+            image_logging["lpips_loss"] = lpips_loss.detach().cpu()
 
-        image_logging["image_loss"] = image_loss
+        image_logging["image_loss"] = image_loss.detach().cpu()
 
         return image_loss, image_logging
