@@ -518,6 +518,29 @@ class IDM(nn.Module):
         action_td, vq_loss, stats = self(batch["obs"])
         batch.update(action_td)
         return vq_loss, stats
+    
+    def sample_la(self, num_samples: int) -> torch.Tensor:
+        indices = torch.randint(
+            low=0,
+            high=self.vq.cfg.num_embs,
+            size=(num_samples, self.vq.cfg.num_codebooks, self.vq.cfg.num_discrete_latents, 1),
+            device=self.vq.embedding.device
+        )
+        # print(f"indices.shape: {indices.shape}")
+
+        z_q = self.vq.inds_to_z_q(indices)
+        # print(f"z_q: {z_q.shape}")
+
+        la = z_q.view(
+            num_samples,
+            self.vq.cfg.num_codebooks
+            * self.vq.cfg.num_discrete_latents
+            * self.vq.cfg.emb_dim,
+        )
+        # print(f"la.shape: {la.shape}")
+
+        return la
+
 
     @torch.no_grad()
     def label_chunked(
