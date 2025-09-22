@@ -88,6 +88,7 @@ class Stage1Config:
     n_eval_steps: int
     n_valid_eval_sample_images: int
     n_test_eval_sample_images: int
+    only_eval_test: bool
     image_loss: ImageLossConfig = field(default_factory=ImageLossConfig)
 
 
