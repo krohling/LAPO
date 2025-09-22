@@ -12,6 +12,7 @@ import wandb
 from flam.configs.loss.image_cfg import ImageLossConfig
 from flam.configs.models.modules.encoder import EncoderConfig
 from flam.configs.models.modules.decoder import DecoderConfig
+# from flam.configs.models.modules.tokenizer.tokenizer_cfg import TokenizerConfig
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -59,6 +60,7 @@ class ModelConfig:
     vq: VQConfig
     la_dim: int
     ta_dim: int
+    tokenizer_load_path: str
     idm_encoder: IDMEncoderConfig = field(default_factory=IDMEncoderConfig)
     wm_encdec: WMEncDecConfig = field(default_factory=WMEncDecConfig)
 
@@ -81,13 +83,13 @@ class Stage1Config:
     lr: float
     bs: int
     steps: int
-    load_checkpoint: str | None
     eval_freq: int
     eval_skip_steps: int
     valid_dataset_percentage: float
     n_eval_steps: int
     n_valid_eval_sample_images: int
     n_test_eval_sample_images: int
+    load_checkpoint: str | None = None
     image_loss: ImageLossConfig = field(default_factory=ImageLossConfig)
 
 
@@ -139,6 +141,7 @@ class Config:
     stage3: Stage3Config
 
     image_size: int = 64
+    feat_shape: tuple = (128, 8, 8)  # (D, H, W)
     sub_traj_len: int = 2
 
 

@@ -8,7 +8,6 @@ echo "Using dataset: $DATASET"
 DATA_PATH_BASE="/scratch/cluster/zzwang_new/flam_data"
 ENV_NAME="flam"
 LEARNING_RATE=5e-5
-BATCH_SIZE=128
 TRAINING_STEPS=50000
 EVAL_FREQ=2500
 EVAL_SKIP_STEPS=0
@@ -87,25 +86,28 @@ IDM_ENCODER_IMPALA_Z_CHANNELS=8
 if [ "$DATASET" = "multigrid" ]; then
     EXP_NAME="multigrid"
     TRAINING_STEPS=50000
+    BATCH_SIZE=128
 
     # Model
     VQ_COMMITMENT_COST=0.01
     VQ_DECAY=0.7
     VQ_WARMUP_STEPS=100
+    WM_ENCODER_TYPE="impala"
+    WM_DECODER_TYPE="lapo"
+    IDM_ENCODER_TYPE="impala"
+    WM_ENCODER_IMPALA_CH_MULT=[2,4]
+    WM_DECODER_LAPO_CH_MULT=[2,4]
+    TOKENIZER_FNAME="multigrid_fsq_1024.pt"
 
     # Data
     DATA_PATH="$DATA_PATH_BASE/multigrid/"
     IMAGE_SIZE=128
+    FEAT_SHAPE=[128,8,8]  # (D, H, W)
     FRAME_SKIP=1
     ITERATE_FRAME_BETWEEN_SKIP=true
     TRAIN_DATASET_ID="empty-agent_4-v0/data/main_data.hdf5"     # v0: train (1M), v1: valid (10k), v2: test (100k)
     VALID_DATASET_ID="empty-agent_4-v1/data/main_data.hdf5"
     TEST_DATASET_ID="empty-agent_4-v2/data/main_data.hdf5"
-
-    # Encoder/Decoder settings
-    WM_ENCODER_TYPE="impala"
-    WM_DECODER_TYPE="lapo"
-    IDM_ENCODER_TYPE="impala"
 elif [ "$DATASET" = "procgen" ]; then
     EXP_NAME="procgen"
     BATCH_SIZE=32
@@ -118,20 +120,22 @@ elif [ "$DATASET" = "procgen" ]; then
     VQ_COMMITMENT_COST=0.1
     VQ_DECAY=0.7
     VQ_WARMUP_STEPS=100
+    WM_ENCODER_TYPE="impala"
+    WM_DECODER_TYPE="lapo"
+    IDM_ENCODER_TYPE="impala"
+    WM_ENCODER_IMPALA_CH_MULT=[4]
+    WM_DECODER_LAPO_CH_MULT=[4]
+    TOKENIZER_FNAME="procgen_background_${PROCGEN_USE_BACKGROUND}_fsq_1024.pt"
 
     # Data
     DATA_PATH="$DATA_PATH_BASE/procgen/"
     IMAGE_SIZE=224
+    FEAT_SHAPE=[128,14,14]  # (D, H, W)
     FRAME_SKIP=1
     ITERATE_FRAME_BETWEEN_SKIP=true
     TRAIN_DATASET_ID="\\*background_${PROCGEN_USE_BACKGROUND}-v0/data/main_data.hdf5"
     VALID_DATASET_ID="\\*background_${PROCGEN_USE_BACKGROUND}-v1/data/main_data.hdf5"
     TEST_DATASET_ID="\\*background_${PROCGEN_USE_BACKGROUND}-v2/data/main_data.hdf5"
-
-    # Encoder/Decoder settings
-    WM_ENCODER_TYPE="impala"
-    WM_DECODER_TYPE="lapo"
-    IDM_ENCODER_TYPE="impala"
 elif [ "$DATASET" = "sports" ]; then
     EXP_NAME="sports"
     LEARNING_RATE=5e-5
@@ -144,20 +148,23 @@ elif [ "$DATASET" = "sports" ]; then
     # Model
     VQ_COMMITMENT_COST=0.15
     VQ_DECAY=0.7
+    WM_ENCODER_TYPE="magvit2"
+    WM_DECODER_TYPE="magvit2"
+    IDM_ENCODER_TYPE="magvit2"
+    IDM_ENCODER_MAGVIT2_CH_MULT=[4]
+    WM_ENCODER_MAGVIT2_CH_MULT=[4]
+    WM_DECODER_MAGVIT2_CH_MULT=[4]
+    TOKENIZER_FNAME="sports_fsq_16384.pt"
 
     # Data
     DATA_PATH="$DATA_PATH_BASE/"
     IMAGE_SIZE=224
+    FEAT_SHAPE=[128,14,14]  # (D, H, W)
     FRAME_SKIP=3
     ITERATE_FRAME_BETWEEN_SKIP=true
     TRAIN_DATASET_ID="basketball/train.hdf5,sports_mot/train.hdf5,tennis_play_video_generation/train.hdf5,tenniset/train.hdf5,volleyball/train.hdf5"
     VALID_DATASET_ID="basketball/valid.hdf5,sports_mot/valid.hdf5,tennis_play_video_generation/valid.hdf5,tenniset/valid.hdf5,volleyball/valid.hdf5"
     TEST_DATASET_ID="basketball/test.hdf5,sports_mot/test.hdf5,tennis_play_video_generation/test.hdf5,tenniset/test.hdf5,volleyball/test.hdf5"
-
-    # Encoder/Decoder settings
-    WM_ENCODER_TYPE="magvit2"
-    WM_DECODER_TYPE="magvit2"
-    IDM_ENCODER_TYPE="magvit2"
 elif [ "$DATASET" = "nuplan" ]; then
     EXP_NAME="nuplan"
     LEARNING_RATE=5e-5
@@ -170,20 +177,23 @@ elif [ "$DATASET" = "nuplan" ]; then
     # Model
     VQ_COMMITMENT_COST=0.15
     VQ_DECAY=0.7
+    WM_ENCODER_TYPE="magvit2"
+    WM_DECODER_TYPE="magvit2"
+    IDM_ENCODER_TYPE="magvit2"
+    IDM_ENCODER_MAGVIT2_CH_MULT=[4]
+    WM_ENCODER_MAGVIT2_CH_MULT=[4]
+    WM_DECODER_MAGVIT2_CH_MULT=[4]
+    TOKENIZER_FNAME="nuplan_fsq_16384.pt"
 
     # Data
     DATA_PATH="$DATA_PATH_BASE/"
     IMAGE_SIZE=224
+    FEAT_SHAPE=[128,14,14]  # (D, H, W)
     FRAME_SKIP=2
     ITERATE_FRAME_BETWEEN_SKIP=true
     TRAIN_DATASET_ID="nuplan_mini/train_CAM_F0.hdf5,nuplan_val/train_CAM_F0.hdf5"
     VALID_DATASET_ID="nuplan_mini/valid_CAM_F0.hdf5,nuplan_val/valid_CAM_F0.hdf5"
     TEST_DATASET_ID="nuplan_mini/test_CAM_F0.hdf5,nuplan_val/test_CAM_F0.hdf5"
-
-    # Encoder/Decoder settings
-    WM_ENCODER_TYPE="magvit2"
-    WM_DECODER_TYPE="magvit2"
-    IDM_ENCODER_TYPE="magvit2"
 elif [ "$DATASET" = "gr00t" ]; then
     EXP_NAME="gr00t"
     BATCH_SIZE=8
@@ -192,20 +202,23 @@ elif [ "$DATASET" = "gr00t" ]; then
     LEARNING_RATE=5e-5
     VQ_COMMITMENT_COST=0.15
     VQ_DECAY=0.7
+    WM_ENCODER_TYPE="magvit2"
+    WM_DECODER_TYPE="magvit2"
+    IDM_ENCODER_TYPE="magvit2"
+    IDM_ENCODER_MAGVIT2_CH_MULT=[4]
+    WM_ENCODER_MAGVIT2_CH_MULT=[4]
+    WM_DECODER_MAGVIT2_CH_MULT=[4]
+    TOKENIZER_FNAME="gr00t_fsq_4096.pt"
 
     # Data
     DATA_PATH="$DATA_PATH_BASE/"
     IMAGE_SIZE=224
+    FEAT_SHAPE=[128,14,14]  # (D, H, W)
     FRAME_SKIP=2
     ITERATE_FRAME_BETWEEN_SKIP=true
     TRAIN_DATASET_ID="gr00t/train.hdf5"
     VALID_DATASET_ID="gr00t/valid.hdf5"
     TEST_DATASET_ID="gr00t/test.hdf5"
-
-    # Encoder/Decoder settings
-    WM_ENCODER_TYPE="magvit2"
-    WM_DECODER_TYPE="magvit2"
-    IDM_ENCODER_TYPE="magvit2"
 elif [ "$DATASET" = "egtea" ]; then
     EXP_NAME="egtea"
     BATCH_SIZE=8
@@ -218,20 +231,23 @@ elif [ "$DATASET" = "egtea" ]; then
     LEARNING_RATE=5e-5
     VQ_COMMITMENT_COST=0.15
     VQ_DECAY=0.7
+    WM_ENCODER_TYPE="magvit2"
+    WM_DECODER_TYPE="magvit2"
+    IDM_ENCODER_TYPE="magvit2"
+    IDM_ENCODER_MAGVIT2_CH_MULT=[4]
+    WM_ENCODER_MAGVIT2_CH_MULT=[4]
+    WM_DECODER_MAGVIT2_CH_MULT=[4]
+    TOKENIZER_FNAME="egtea_fsq_16384.pt"
 
     # Data
     DATA_PATH="$DATA_PATH_BASE/"
     IMAGE_SIZE=224
+    FEAT_SHAPE=[128,14,14]  # (D, H, W)
     FRAME_SKIP=1
     ITERATE_FRAME_BETWEEN_SKIP=true
     TRAIN_DATASET_ID="egtea/train.hdf5"
     VALID_DATASET_ID="egtea/valid.hdf5"
     TEST_DATASET_ID="egtea/test.hdf5"
-
-    # Encoder/Decoder settings
-    WM_ENCODER_TYPE="magvit2"
-    WM_DECODER_TYPE="magvit2"
-    IDM_ENCODER_TYPE="magvit2"
 else
     echo "Unknown dataset: $DATASET"
     exit 1
@@ -241,10 +257,13 @@ fi
 # =============================================================================
 # RUN TRAINING
 # =============================================================================
+TOKENIZER_PATH="${DATA_PATH_BASE}/tokenizer/${TOKENIZER_FNAME}"
+
 python -u stage1_idm.py \
     env_name="$ENV_NAME" \
     exp_name="${EXP_NAME}_$(date +%Y%m%d_%H%M%S)" \
     image_size=$IMAGE_SIZE \
+    feat_shape=$FEAT_SHAPE \
     sub_traj_len=$SUB_TRAJ_LEN \
     data.path="$DATA_PATH" \
     data.train_fname="$TRAIN_DATASET_ID" \
@@ -256,6 +275,7 @@ python -u stage1_idm.py \
     data.prefetch_factor=$PREFETCH_FACTOR \
     model.wm_scale=$WM_SCALE \
     model.policy_impala_scale=$POLICY_IMPALA_SCALE \
+    model.tokenizer_load_path=$TOKENIZER_PATH \
     model.vq.enabled=$VQ_ENABLED \
     model.vq.num_codebooks=$VQ_NUM_CODEBOOKS \
     model.vq.num_discrete_latents=$VQ_NUM_DISCRETE_LATENTS \

@@ -153,7 +153,7 @@ class EncDecWorldModel(nn.Module):
 
     def __init__(self, 
         wm_cfg: WMEncDecConfig, 
-        image_size: Union[int, Tuple[int, int]], 
+        feat_shape: Tuple[int, int, int], 
         sub_traj_len: int, 
         action_dim: int=None
     ):
@@ -163,12 +163,13 @@ class EncDecWorldModel(nn.Module):
 
         self.encoder = encoder_library[wm_cfg.encoder_type](
             encoder_type_cfg, 
-            image_size=image_size, 
+            feat_shape=feat_shape, 
             sub_traj_len=sub_traj_len, 
             action_dim=action_dim
         )
         self.decoder = decoder_library[wm_cfg.decoder_type](
             decoder_type_cfg,
+            feat_shape=feat_shape, 
             down_sizes=self.encoder.down_sizes,
             action_dim=action_dim
         )
@@ -455,7 +456,6 @@ class IDM(nn.Module):
         vq_config: config.VQConfig,
         obs_shape: ObsShapeType,
         encoder_cfg: IDMEncoderConfig,
-        image_size: Union[int, Tuple[int, int]], 
         sub_traj_len: int, 
         action_dim: int=None
     ):
@@ -471,7 +471,7 @@ class IDM(nn.Module):
             )
             self.policy_head = nn.Linear(encoder_type_cfg.impala_features, action_dim)
         else:
-            self.encoder = encoder_library[encoder_cfg.encoder_type](encoder_type_cfg, image_size, sub_traj_len)
+            self.encoder = encoder_library[encoder_cfg.encoder_type](encoder_type_cfg, obs_shape, sub_traj_len)
 
             encoder_features = self.encoder.N * self.encoder.D
             self.policy_head = nn.Linear(encoder_features, action_dim)

@@ -4,8 +4,6 @@ modified from https://github.com/TencentARC/SEED-Voken/blob/main/src/Open_MAGVIT
 
 from einops import rearrange
 
-from typing import List, Tuple
-
 import torch
 import torch.nn as nn
 
@@ -16,7 +14,7 @@ from flam.utils.misc import pack_one, unpack_one
 
 
 class Magvit2Decoder(nn.Module):
-    def __init__(self, decoder_cfg: Magvit2DecoderConfig, feat_shape: Tuple[int, int, int], down_sizes: List[int], action_dim: int = 128):
+    def __init__(self, decoder_cfg: Magvit2DecoderConfig):
         super().__init__()
 
         self.num_blocks = len(decoder_cfg.ch_mult)
@@ -24,31 +22,24 @@ class Magvit2Decoder(nn.Module):
 
         block_in = decoder_cfg.ch * decoder_cfg.ch_mult[-1]
         self.conv_in = nn.Conv2d(
-            decoder_cfg.z_channels + action_dim, block_in, kernel_size=(3, 3), padding=1, bias=True
+            decoder_cfg.z_channels, block_in, kernel_size=(3, 3), padding=1, bias=True
         )
-
-        down_sizes = list(reversed(down_sizes))
-        ds_idx = 1  # skip the first one, which is the input channel size
 
         self.mid_block = nn.ModuleList()
         for res_idx in range(self.num_res_blocks):
-            in_filters = block_in + down_sizes[ds_idx] if res_idx == 0 else block_in
-            self.mid_block.append(ResBlock(in_filters, block_in))
+            self.mid_block.append(ResBlock(block_in, block_in))
 
-        ds_idx += 1
         self.up = nn.ModuleList()
         self.adaptive = nn.ModuleList()
 
         for i_level in reversed(range(self.num_blocks)):
             block = nn.ModuleList()
             block_out = decoder_cfg.ch * decoder_cfg.ch_mult[i_level]
-            self.adaptive.insert(0, AdaptiveGroupNorm(decoder_cfg.z_channels + action_dim, block_in))
+            self.adaptive.insert(0, AdaptiveGroupNorm(decoder_cfg.z_channels, block_in))
             for i_block in range(self.num_res_blocks):
-                in_filters = block_in + down_sizes[ds_idx] if i_block == 0 else block_in
-                block.append(ResBlock(in_filters, block_out))
+                block.append(ResBlock(block_in, block_out))
                 block_in = block_out
 
-            ds_idx += 1
             up = nn.Module()
             up.block = block
             if i_level > 0:
@@ -56,38 +47,21 @@ class Magvit2Decoder(nn.Module):
             self.up.insert(0, up)
 
         self.norm_out = nn.GroupNorm(32, block_in, eps=1e-6)
-        self.conv_out = nn.Conv2d(block_in, feat_shape[0], kernel_size=(3, 3), padding=1)
+        self.conv_out = nn.Conv2d(block_in, 3, kernel_size=(3, 3), padding=1)
 
-    def forward(self, z, enc_features: List, action: torch.Tensor=None):
+    def forward(self, z):
         # :arg z:  (..., H_feat, W_feat, D)
         # :return: (..., 3, H, W)
-        # print("*****Magvit2Decoder.forward*****")
-
-        enc_features = list(reversed(enc_features))
-        feat_idx = 0
 
         # preprocess
         z, ps = pack_one(z, "* h w d")                      # (..., H, W, D) -> (B, H, W, D)
         z = rearrange(z, "b h w d -> b d h w")
 
-        if action is not None:
-            _, _, h, w = z.shape
-            enc_features[feat_idx] = action[:, :, None, None].repeat(1, 1, h, w)
-
-        # print(f"torch.cat: {z.shape}, {enc_features[feat_idx].shape}")
-        z = torch.cat([z, enc_features[feat_idx]], dim=1)
-        feat_idx += 1
-        
         style = z.clone()  # for adaptive groupnorm
 
-        # print(f"conv_in: {z.shape}")
         z = self.conv_in(z)
-        # print(f"torch.cat: {z.shape}, {enc_features[feat_idx].shape}")
-        z = torch.cat([z, enc_features[feat_idx]], dim=1)
-        feat_idx += 1
 
         # mid
-        # print(f"mid: {z.shape}")
         for res in range(self.num_res_blocks):
             z = self.mid_block[res](z)
 
@@ -95,26 +69,18 @@ class Magvit2Decoder(nn.Module):
         for i_level in reversed(range(self.num_blocks)):
             # pass in each resblock first adaGN
             z = self.adaptive[i_level](z, style)
-            # print(f"torch.cat: {z.shape}, {enc_features[feat_idx].shape}")
-            z = torch.cat([z, enc_features[feat_idx]], dim=1)
-            feat_idx += 1
-
-            # print(f"i_level {i_level}: {z.shape}")
             for i_block in range(self.num_res_blocks):
                 z = self.up[i_level].block[i_block](z)
 
             if i_level > 0:
                 z = self.up[i_level].upsample(z)
 
-        # print(f"norm_out & conv_out: {z.shape}")
         z = self.norm_out(z)
         z = swish(z)
         z = self.conv_out(z)
 
         # postprocess
         z = unpack_one(z, ps, "* d h w")                    # (B, 3, H, W) -> (..., 3, H, W)
-
-        # print(f"Magvit2Decoder output: {z.shape}")
 
         return z
 

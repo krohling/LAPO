@@ -8,11 +8,13 @@ import utils
 import time
 import random
 from doy import loop
+from einops import rearrange
 
 from flam.utils.plot.plot_comparison import plot_original_recon_rollout
 from flam.loss.image import ImageLoss
 from hdf5.hdf5_dataset import Hdf5Dataset
 import hdf5.hdf5_data_loader as data_loader
+from flam.models.modules.tokenizer import Tokenizer
 
 cfg = config.get()
 doy.print("[bold green]Running LAPO stage 1 (IDM/FDM training) with config:")
@@ -23,14 +25,19 @@ config.set_add_time_horizon(cfg.sub_traj_len-2)
 
 run, logger = config.wandb_init("lapo_stage1", config.get_wandb_cfg(cfg))
 
+tokenizer = Tokenizer(
+    cfg.model.tokenizer_load_path,
+    sub_traj_len=cfg.sub_traj_len,
+).to(config.DEVICE).eval()
+
 idm, wm = utils.create_dynamics_models(
     cfg.model, 
-    image_size=cfg.image_size,
+    feat_shape=cfg.feat_shape,
     sub_traj_len=cfg.sub_traj_len,
 )
 
 
-image_loss = ImageLoss(cfg.stage1.image_loss).to(config.DEVICE)
+image_loss = ImageLoss(cfg.stage1.image_loss).eval().to(config.DEVICE)
 train_data, valid_data, test_data = data_loader.load(
     **cfg.data,
     image_size=cfg.image_size,
@@ -56,6 +63,24 @@ if cfg.stage1.load_checkpoint is not None and cfg.stage1.load_checkpoint != "":
     opt.load_state_dict(checkpoint['opt'])
     print(f"[bold yellow] Loaded checkpoint from {cfg.stage1.load_checkpoint}.")
 
+def tokenize_input(x):
+    # Encoder input: (B, T, C, H, W) -> (B, T, d_feat, h_feat, w_feat)
+    with torch.no_grad():
+        # print(f"Tokenizing input with shape {x.shape}")
+        x = tokenizer.encode(x)[0]
+        x = rearrange(x, 'b t h w d -> b t d h w').contiguous()
+        # print(f"Tokenized input to shape {x.shape}")
+        
+    return x
+
+# decode predicted features back to images for logging
+def decode_to_image(x):
+    # Decoder input: (B, d_feat, h_feat, w_feat) -> (B, C, H, W)
+    with torch.no_grad():
+        x = rearrange(x, 'b d h w -> b h w d').contiguous()
+        x = tokenizer.decode(x)
+        
+    return x
 
 def train_step():
     idm.train()
@@ -64,7 +89,7 @@ def train_step():
     lr_sched.step(step)
 
     batch = next(train_iter)
-
+    batch['obs'] = tokenize_input(batch['obs'])
     vq_loss, idm_stats = idm.label(batch)
     wm_loss = wm.label(batch)
     loss = wm_loss + vq_loss
@@ -141,6 +166,7 @@ def test_multistep_prediction(
                 ])  # (n_steps, T, C, H, W)
                 assert idm_xs.shape[1] == T, f"idm_xs.shape: {idm_xs.shape}, T: {T}"
 
+                idm_xs = tokenize_input(idm_xs)  # (n_steps, T, d_feat, h_feat, w_feat)
                 l_actions, _, _ = idm(idm_xs)
                 l_rand_actions = idm.sample_la(n_steps)  # (n_steps, latent_action_dim)
 
@@ -161,14 +187,18 @@ def test_multistep_prediction(
                     
                     # infer next image using both the predicted and random latent actions
                     assert x.shape[1] == T-1, f"x.shape: {x.shape}, len(pred_xs): {len(pred_xs)}"
+                    wm_xs = tokenize_input(
+                        torch.cat([x, x], dim=0)  # (2, T-1, d_feat, h_feat, w_feat)
+                    )
                     wm_out = wm(
-                        torch.cat([x, x], dim=0),  # (2, T-1, C, H, W) 
+                        wm_xs, 
                         torch.cat([
                             l_actions['la'][i].unsqueeze(0), 
                             l_rand_actions[i].unsqueeze(0)
                         ], dim=0) # (2, latent_action_dim) 
-                    ).clamp(0, 1)  # (2, C, H, W) [pred, rand_pred]
-                    pred, rand_pred = wm_out[0].squeeze().detach(), wm_out[1].squeeze().detach()  # (C, H, W), (C, H, W)
+                    ).clamp(0, 1)  # (2, d_feat, h_feat, w_feat) [pred, rand_pred]
+                    wm_out = decode_to_image(wm_out)  # (2, C, H, W)
+                    pred, rand_pred = wm_out[0].squeeze(), wm_out[1].squeeze()  # (C, H, W), (C, H, W)
 
                     # compute loss using the last predicted image and target
                     target_idx = idx+T-1

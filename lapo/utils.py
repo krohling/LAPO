@@ -300,20 +300,19 @@ def create_decoder(in_dim, out_dim, device=config.DEVICE, hidden_sizes=(128, 128
 
 def create_dynamics_models(
     model_cfg: config.ModelConfig, 
-    image_size: int = 64,
+    feat_shape: int = (128, 8, 8),
     sub_traj_len: int = 2,
     state_dicts: dict | None = None,
 ) -> tuple[IDM, WorldModel]:
-    obs_depth = 3
-    idm_in_depth = obs_depth * (2 + config.get_add_time_horizon())
-    wm_in_depth = obs_depth * (1 + config.get_add_time_horizon())
-    wm_out_depth = obs_depth
+    # obs_depth = 3
+    # idm_in_depth = obs_depth * (2 + config.get_add_time_horizon())
+    # wm_in_depth = obs_depth * (1 + config.get_add_time_horizon())
+    # wm_out_depth = obs_depth
 
     idm = IDM(
         model_cfg.vq,
-        (idm_in_depth, image_size, image_size),
+        feat_shape,
         model_cfg.idm_encoder,
-        image_size=image_size,
         sub_traj_len=sub_traj_len,
         action_dim=model_cfg.la_dim,
     ).to(config.DEVICE)
@@ -327,7 +326,7 @@ def create_dynamics_models(
     
     wm = EncDecWorldModel(
         wm_cfg=model_cfg.wm_encdec,
-        image_size=image_size,
+        feat_shape=feat_shape,
         sub_traj_len=sub_traj_len-1,
         action_dim=model_cfg.la_dim,
     ).to(config.DEVICE)
