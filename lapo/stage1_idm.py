@@ -130,7 +130,7 @@ def test_multistep_prediction(
         n_steps: int=10, 
         n_rec_episodes: int=5, 
         use_ds_percentage: float=1.0,
-        print_progress: bool=True,
+        print_progress: bool=False,
     ):
     idm.eval()  # disables idm.vq ema update
     wm.eval()
