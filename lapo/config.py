@@ -90,6 +90,7 @@ class Stage1Config:
     n_valid_eval_sample_images: int
     n_test_eval_sample_images: int
     load_checkpoint: str | None = None
+    only_eval_test: bool
     image_loss: ImageLossConfig = field(default_factory=ImageLossConfig)
 
 

@@ -3,6 +3,7 @@
 # =============================================================================
 DATASET="${1:-multigrid}"                                   # multigrid, procgen, sports, nuplan, gr00t, egtea
 LOAD_CHECKPOINT="${2:-}"
+ONLY_EVAL_TEST="${3:-false}"
 echo "Using dataset: $DATASET"
 
 DATA_PATH_BASE="/scratch/cluster/zzwang_new/flam_data"
@@ -313,6 +314,7 @@ python -u stage1_idm.py \
     stage1.lr=$LEARNING_RATE \
     stage1.bs=$BATCH_SIZE \
     stage1.steps=$TRAINING_STEPS \
+    stage1.only_eval_test=$ONLY_EVAL_TEST \
     stage1.load_checkpoint="$LOAD_CHECKPOINT" \
     stage1.eval_freq=$EVAL_FREQ \
     stage1.eval_skip_steps=$EVAL_SKIP_STEPS \

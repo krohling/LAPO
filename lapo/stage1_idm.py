@@ -265,6 +265,9 @@ def test_multistep_prediction(
 best_loss = float('inf')
 best_checkpoint_path = None
 for step in loop(cfg.stage1.steps + 1, desc="[green bold](stage-1) Training IDM + FDM"):
+    if cfg.stage1.only_eval_test:
+        break
+    
     train_step()
 
     if step > cfg.stage1.eval_skip_steps and step % cfg.stage1.eval_freq == 0:
