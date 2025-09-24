@@ -111,14 +111,15 @@ def test_multistep_prediction(
     wm.eval()
 
 
-    episodes = dataset.get_all_episodes()
+    n_episodes = total_episode_count = dataset.count_episodes()
     if use_ds_percentage < 1.0:
-        total_episodes = len(episodes)
-        n_episodes = int(total_episodes * use_ds_percentage)
-        episodes = random.sample(episodes, k=n_episodes)
-        print(f"Using {n_episodes} episodes ({use_ds_percentage*100:.1f}%) for evaluation, out of {total_episodes} total episodes.")
+        n_episodes = int(total_episode_count * use_ds_percentage)
 
-    epi_rec_images_indices = random.sample(range(len(episodes)), k=min(n_rec_episodes, len(episodes)))
+    episodes = dataset.get_episodes(randomize=True, num_samples=n_episodes)
+    print(f"Using {n_episodes} episodes ({use_ds_percentage*100:.1f}%) for evaluation, out of {total_episode_count} total episodes.")
+
+
+    epi_rec_images_indices = random.sample(range(n_episodes), k=min(n_rec_episodes, n_episodes))
     rec_gt_images = {k: [] for k in epi_rec_images_indices}
     rec_pred_images = {k: [] for k in epi_rec_images_indices}
 
@@ -126,10 +127,10 @@ def test_multistep_prediction(
         T = cfg.sub_traj_len
         pred_losses, rand_pred_losses = [], []
         counter = 0
-        for epi_idx in range(len(episodes)):
+        for epi_idx in range(n_episodes):
             if print_progress:
-                print(f"Evaluating episode {epi_idx+1} of {len(episodes)}")
-            epi_steps = episodes[epi_idx]
+                print(f"Evaluating episode {epi_idx+1} of {n_episodes}")
+            epi_steps = next(episodes)  # dict of (T, C, H, W) tensors
 
             # randomly pick a safe rec_t to start recording for this episode
             rec_t = random.randint(0, max(0, epi_steps['image'].shape[0]-T-n_steps+1))

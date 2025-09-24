@@ -1,4 +1,5 @@
 import dataclasses
+import random
 from typing import List, Dict, Literal, Tuple, Union, Optional
 
 import h5py
@@ -96,6 +97,7 @@ class Hdf5Dataset(torch.utils.data.Dataset):
             "valid": config.dataset.valid_fname,
             "test": config.dataset.test_fname,
         }[split]
+        print(f"split_fname: {split_fname}")
 
         if isinstance(data_path, str):
             data_path = [data_path]
@@ -222,15 +224,37 @@ class Hdf5Dataset(torch.utils.data.Dataset):
 
         return {int(idx): int(steps) for idx, steps in zip(episode_indices, episode_lengths)}
 
-    def get_all_episodes(self) -> Dict[str, torch.Tensor]:
+    def count_episodes(self) -> int:
         epi_paths = {}
         for idx in range(len(self.sub_traj_paths)):
             data_path, _, epi_idx, _ = self.sub_traj_paths[idx]
             if data_path not in epi_paths:
                 epi_paths[data_path] = set()
             epi_paths[data_path].add(epi_idx)
+        
+        num_episodes = 0
+        for data_path in epi_paths.keys():
+            num_episodes += len(epi_paths[data_path])
 
-        episodes = []
+        return num_episodes
+
+    def get_episodes(self, randomize=False, num_samples=None) -> Dict[str, torch.Tensor]:
+        if num_samples is None:
+            num_samples = len(self.sub_traj_paths)
+
+        if randomize:
+            path_indices = random.sample(range(len(self.sub_traj_paths)), num_samples)
+        else:
+            path_indices = list(range(num_samples))
+
+        epi_paths = {}
+        for idx in path_indices:
+            data_path, _, epi_idx, _ = self.sub_traj_paths[idx]
+            if data_path not in epi_paths:
+                epi_paths[data_path] = set()
+            epi_paths[data_path].add(epi_idx)
+
+        # episodes = []
         for data_path in epi_paths.keys():
             with h5py.File(data_path, "r", libver="latest", swmr=True) as f:
                 for epi_idx in epi_paths[data_path]:
@@ -244,11 +268,15 @@ class Hdf5Dataset(torch.utils.data.Dataset):
                     image = self.resize(image)                                                      # (T, C, H', W')
                     image = image.clip(0.0, 1.0)
 
-                    episodes.append({
+                    yield {
                         "image": image.to(dtype=self.dtype),
-                    })
+                    }
 
-        return episodes
+                    # episodes.append({
+                    #     "image": image.to(dtype=self.dtype),
+                    # })
+
+        # return episodes
         
 
     def __getitem__(self, idx) -> Dict[str, torch.Tensor]:
