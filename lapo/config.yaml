@@ -5,7 +5,6 @@ stage_exp_name: ~ # updated in stages 1-3, used for wandb logging as a suffix
 # configure model architecture
 model:
   wm_scale: 24
-  idm_impala_scale: 4
   policy_impala_scale: 4
   vq:
     enabled: true
@@ -15,12 +14,19 @@ model:
     num_embs: 64 # each of the vq_latent_dim latents is a categorical variable with vq_num_embs values
     commitment_cost: 0.05
     decay: 0.999
+    warmup_steps: 0
 
 # stage-1 (latent idm & wm training) hyperparameters
 stage1:
   lr: 3e-4
   bs: 128
   steps: 50_000
+  eval_freq: 500
+  eval_skip_steps: 0
+  valid_dataset_percentage: 1.0
+  n_eval_steps: 10
+  n_valid_eval_sample_images: 10
+  n_test_eval_sample_images: 10
 
 # stage-2 (latent behavior cloning) hyperparameters
 stage2:

@@ -97,29 +97,25 @@ class Hdf5Dataset(torch.utils.data.Dataset):
             "test": config.dataset.test_fname,
         }[split]
 
-        if isinstance(data_path, str) and isinstance(split_fname, str):
-            # Single base path and a single split filename; may contain wildcard
-            base = Path(data_path)
-            candidate = base / split_fname
-            pattern = str(candidate)
-            if any(ch in split_fname for ch in ["*", "?", "["]):
-                # Expand wildcard only in this scenario
-                matches = sorted({Path(p) for p in __import__('glob').glob(pattern)})
-                assert len(matches) > 0, f"No files matched pattern: {pattern}"
-                data_paths = matches
-                # In this mode, frame_skip must be an int; broadcast to all files
-                assert isinstance(config.dataset.frame_skip, int), (
-                    "When using wildcard in split filename, frame_skip must be an int"
-                )
-            else:
-                data_paths = [candidate]
-        elif isinstance(data_path, list) and isinstance(split_fname, str):
-            data_paths = [Path(p) / split_fname for p in data_path]
-        elif isinstance(data_path, str) and isinstance(split_fname, list):
-            data_paths = [Path(data_path) / fname for fname in split_fname]
-        else:
-            assert len(data_path) == len(split_fname), "data_path and filename lists must have the same length"
-            data_paths = [Path(p) / fname for p, fname in zip(data_path, split_fname)]
+        if isinstance(data_path, str):
+            data_path = [data_path]
+        if isinstance(split_fname, str):
+            split_fname = [split_fname]
+
+        data_paths = []
+        for data_path_i in data_path:
+            for split_fname_i in split_fname:
+                base = Path(data_path_i)
+                candidate = base / split_fname_i
+
+                # split_fname_i may contain wildcard, expand wildcard if so
+                if any(ch in split_fname_i for ch in ["*", "?", "["]):
+                    pattern = str(candidate)
+                    matches = sorted({Path(p) for p in __import__('glob').glob(pattern)})
+                    assert len(matches) > 0, f"No files matched pattern: {pattern}"
+                    data_paths.extend(matches)
+                else:
+                    data_paths.append(candidate)
 
         # Validate data paths exist
         for data_path in data_paths:
@@ -144,7 +140,11 @@ class Hdf5Dataset(torch.utils.data.Dataset):
                         e for e in list(f.keys()) 
                         if "episode" in e and isinstance(f[e], h5py.Group)
                     ])
-            episode_indices = list(range(num_episodes))
+                episode_indices = sorted([
+                    int(ep.split('_')[1]) for ep in f.keys() 
+                    if "episode_" in ep and isinstance(f[ep], h5py.Group) and "observations" in f[ep]
+                ])
+
             epi_idx_to_steps = self._get_episode_steps(str(data_path), episode_indices)
 
             for epi_idx in tqdm(
@@ -153,6 +153,10 @@ class Hdf5Dataset(torch.utils.data.Dataset):
                 desc=f"Loading {split} dataset ({data_idx + 1}/{len(data_paths)})",
             ):
                 total_steps = int(epi_idx_to_steps[epi_idx])
+
+                if total_steps <= 0:
+                    continue
+
                 num_timestamps += total_steps
 
                 if config.dataset.iterate_frame_between_skip:
@@ -166,6 +170,10 @@ class Hdf5Dataset(torch.utils.data.Dataset):
             total_num_episodes += num_episodes
 
         print(f"{split} dataset has: {total_num_episodes} episodes, {num_timestamps} timestamps, and {len(self.sub_traj_paths)} data points")
+
+    @property
+    def action_space(self):
+        return None
 
     def __len__(self):
         return len(self.sub_traj_paths)
@@ -203,13 +211,45 @@ class Hdf5Dataset(torch.utils.data.Dataset):
             torch.distributed.barrier()
 
         if not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0:
-            with h5py.File(data_file_path, "a") as f:
-                # Overwrite or create the single cache dataset
-                if "episode_lengths" in f:
-                    del f["episode_lengths"]
-                f.create_dataset("episode_lengths", data=np.array(episode_lengths, dtype=np.int64))
+            try:
+                with h5py.File(data_file_path, "a") as f:
+                    # Overwrite or create the single cache dataset
+                    if "episode_lengths" in f:
+                        del f["episode_lengths"]
+                    f.create_dataset("episode_lengths", data=np.array(episode_lengths, dtype=np.int64))
+            except Exception:
+                print(f"Warning: could not write episode_lengths to {data_file_path}")
 
         return {int(idx): int(steps) for idx, steps in zip(episode_indices, episode_lengths)}
+
+    def get_all_episodes(self) -> Dict[str, torch.Tensor]:
+        epi_paths = {}
+        for idx in range(len(self.sub_traj_paths)):
+            data_path, _, epi_idx, _ = self.sub_traj_paths[idx]
+            if data_path not in epi_paths:
+                epi_paths[data_path] = set()
+            epi_paths[data_path].add(epi_idx)
+
+        episodes = []
+        for data_path in epi_paths.keys():
+            with h5py.File(data_path, "r", libver="latest", swmr=True) as f:
+                for epi_idx in epi_paths[data_path]:
+                    epi_group = f[f"episode_{epi_idx}"]
+                    assert isinstance(epi_group, h5py.Group)
+                    total_steps = int(epi_group.attrs["total_steps"])  # type: ignore[index]
+                    image = np.ascontiguousarray(epi_group["observations"][0:total_steps])              # (T, H, W, C)
+                    
+                    image = (torch.from_numpy(image).to(self.dtype) / 255.0) # - 0.5                  # (T, H, W, C)
+                    image = rearrange(image, "t h w c -> t c h w")                                  # (T, C, H, W)
+                    image = self.resize(image)                                                      # (T, C, H', W')
+                    image = image.clip(0.0, 1.0)
+
+                    episodes.append({
+                        "image": image.to(dtype=self.dtype),
+                    })
+
+        return episodes
+        
 
     def __getitem__(self, idx) -> Dict[str, torch.Tensor]:
         data_path, frame_skip, epi_idx, timestamp = self.sub_traj_paths[idx]
@@ -221,10 +261,10 @@ class Hdf5Dataset(torch.utils.data.Dataset):
 
             image = np.ascontiguousarray(epi_group["observations"][idxes])              # (T, H, W, C)
 
-        image = (torch.from_numpy(image).to(self.dtype) / 255.0) - 0.5                  # (T, H, W, C)
+        image = (torch.from_numpy(image).to(self.dtype) / 255.0) # - 0.5                  # (T, H, W, C)
         image = rearrange(image, "t h w c -> t c h w")                                  # (T, C, H, W)
         image = self.resize(image)                                                      # (T, C, H', W')
-        image = image.clip(-0.5, 0.5)
+        image = image.clip(0.0, 1.0)
 
         sub_traj = {
             "image": image.to(dtype=self.dtype),

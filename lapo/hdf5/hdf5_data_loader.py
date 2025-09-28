@@ -10,6 +10,16 @@ from config import DEVICE
 from hdf5.hdf5_cfg import DatasetConfig, Hdf5DatasetConfig
 from hdf5.hdf5_dataset import Hdf5Dataset
 
+def format_fname(fname: Union[str, List[str]]) -> List[str]:
+    if isinstance(fname, str):
+        if ',' in fname:
+            fname = fname.split(',')
+        else:
+            fname = [fname]
+
+    fname = [f.replace("\\", "").strip() for f in fname]
+    return fname
+
 class HDF5DataStager:
     def __init__(
         self,
@@ -37,9 +47,9 @@ class HDF5DataStager:
                 rank=0,
                 dataset=Hdf5DatasetConfig(
                     data_path=data_path,
-                    train_fname=train_fname,
-                    valid_fname=valid_fname,
-                    test_fname=test_fname,
+                    train_fname=format_fname(train_fname),
+                    valid_fname=format_fname(valid_fname),
+                    test_fname=format_fname(test_fname),
                     frame_skip=frame_skip,
                     iterate_frame_between_skip=iterate_frame_between_skip,
                 )
@@ -56,7 +66,7 @@ class HDF5DataStager:
         shuffle=True,
         drop_last=True,
     ) -> Generator[TensorDict, None, None]:
-        print(f"num_workers: {self.num_workers}, prefetch_factor: {self.prefetch_factor}")
+        # print(f"num_workers: {self.num_workers}, prefetch_factor: {self.prefetch_factor}")
         dataloader = DataLoader(
             self.dataset,
             batch_size=batch_size,
@@ -84,21 +94,27 @@ class HDF5DataStager:
 
 
 def load(
-        data_path: str, 
+        path: str, 
         **kwargs
     ) -> tuple[HDF5DataStager, HDF5DataStager]:
     
-    dl_train = HDF5DataStager(
-        data_path=data_path,
+    ds_train = HDF5DataStager(
+        **kwargs,
+        data_path=path,
         split="train",
-        **kwargs
+    )
+
+    ds_valid = HDF5DataStager(
+        **kwargs,
+        data_path=path,
+        split="valid",
     )
 
     ds_test = HDF5DataStager(
-        data_path=data_path,
+        **kwargs,
+        data_path=path,
         split="test",
-        **kwargs
     )
 
-    return dl_train, ds_test
+    return ds_train, ds_valid, ds_test
 

@@ -5,7 +5,7 @@ from functools import partial
 import doy
 import gym
 import numpy as np
-from procgen import ProcgenEnv
+# from procgen import ProcgenEnv
 
 
 def normalize_return(ep_ret, env_name):

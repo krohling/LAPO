@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from typing import Iterable
+from dataclasses import dataclass, field
+from typing import Iterable, Literal
 
 import doy
 import env_utils
@@ -8,6 +8,10 @@ from omegaconf import DictConfig, OmegaConf
 from rich.syntax import Syntax
 import torch
 import wandb
+
+from flam.configs.loss.image_cfg import ImageLossConfig
+from flam.configs.models.modules.encoder import EncoderConfig
+from flam.configs.models.modules.decoder import DecoderConfig
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -33,16 +37,41 @@ class VQConfig:
     num_embs: int
     commitment_cost: float
     decay: float
+    warmup_steps: int
+
+@dataclass
+class WMEncDecConfig:
+    encoder_type: str = "impala"  # Literal["magvit2", "impala", "cosmos_continuous"]
+    decoder_type: str = "lapo"    # Literal["magvit2", "lapo", "cosmos_continuous"]
+    encoder_all: EncoderConfig = field(default_factory=EncoderConfig)
+    decoder_all: DecoderConfig = field(default_factory=DecoderConfig)
+
+@dataclass
+class IDMEncoderConfig:
+    encoder_type: str = "impala"    # Literal["default", "magvit2", "impala", "cosmos_continuous"]
+    encoder_all: EncoderConfig = field(default_factory=EncoderConfig)
 
 
 @dataclass
 class ModelConfig:
     wm_scale: int
-    idm_impala_scale: int
     policy_impala_scale: int
     vq: VQConfig
     la_dim: int
     ta_dim: int
+    idm_encoder: IDMEncoderConfig = field(default_factory=IDMEncoderConfig)
+    wm_encdec: WMEncDecConfig = field(default_factory=WMEncDecConfig)
+
+@dataclass
+class DataConfig:
+    path: str
+    train_fname: str = "train.hdf5"
+    valid_fname: str = "valid.hdf5"
+    test_fname: str = "test.hdf5"
+    frame_skip: int = 4
+    iterate_frame_between_skip: bool | None = True
+    num_workers: int = 0
+    prefetch_factor: int | None = None
 
 
 @dataclass
@@ -52,6 +81,15 @@ class Stage1Config:
     lr: float
     bs: int
     steps: int
+    load_checkpoint: str | None
+    eval_freq: int
+    eval_skip_steps: int
+    valid_dataset_percentage: float
+    n_eval_steps: int
+    n_valid_eval_sample_images: int
+    n_test_eval_sample_images: int
+    only_eval_test: bool
+    image_loss: ImageLossConfig = field(default_factory=ImageLossConfig)
 
 
 @dataclass
@@ -94,20 +132,15 @@ class Config:
     exp_name: str
     stage_exp_name: str | None
 
+    data: DataConfig
     model: ModelConfig
+
     stage1: Stage1Config
     stage2: Stage2Config
     stage3: Stage3Config
 
-    data_path: str
-    sub_traj_len: int = 2
     image_size: int = 64
-    train_fname: str = "train.hdf5"
-    test_fname: str = "test.hdf5"
-    frame_skip: int = 4
-    iterate_frame_between_skip: bool | None = True
-    num_workers: int = 0
-    prefetch_factor: int | None = None
+    sub_traj_len: int = 2
 
 
 def get(

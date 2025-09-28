@@ -1,5 +1,7 @@
 *.pyc
 *.hdf5
+*.log
+*.pt
 __pycache__/
 lapo/wandb/
 lapo/expert_data/
